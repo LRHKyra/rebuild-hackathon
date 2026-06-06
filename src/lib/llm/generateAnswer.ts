@@ -9,9 +9,13 @@
 // canSpeak must be true only for high/medium (§10B). Do not change the signature.
 
 import type { Confidence, KnowledgeCard } from "@/types";
+import { callStructured, MODELS } from "./client";
 
 const REFUSAL =
   "I do not have that confirmed in the product knowledge base. I would not want to guess.";
+
+const SYSTEM =
+  "You are Vesper, a company-specific expert assistant. Answer only using the provided knowledge cards. If the answer is not supported, say you cannot confirm from the knowledge base. Keep the answer concise and useful for a live call.";
 
 export type GenerateAnswerInput = {
   question: string;
@@ -27,18 +31,67 @@ export type GenerateAnswerResult = {
   canSpeak: boolean;
 };
 
-// AGENT: replace this body with a Claude (Sonnet) forced-tool call per §12.
+// Grounded answer via a Sonnet forced-tool call (§12). Answer ONLY from the
+// provided cards; cite their ids; confidence is the single source of truth (§10B).
 export async function generateAnswer(
   input: GenerateAnswerInput,
 ): Promise<GenerateAnswerResult> {
+  // No cards → refuse (§10A). The route short-circuits this, but keep it safe.
   if (input.cards.length === 0) {
     return { answer: REFUSAL, confidence: "low", sourceCardIds: [], canSpeak: false };
   }
-  const top = input.cards[0];
-  return {
-    answer: `Based on our docs: ${top.text.slice(0, 160)}`,
-    confidence: "medium",
-    sourceCardIds: input.cards.slice(0, 2).map((c) => c.id),
-    canSpeak: true,
-  };
+
+  const cardList = input.cards
+    .map((c) => `[${c.id}] ${c.title}: ${c.text}`)
+    .join("\n\n");
+
+  const transcriptBlock = input.transcriptContext
+    ? `Transcript context:\n${input.transcriptContext}\n\n`
+    : "";
+
+  const userText =
+    `Customer question:\n${input.question}\n\n` +
+    transcriptBlock +
+    `Knowledge cards:\n${cardList}\n\n` +
+    "Answer the customer question using only the knowledge cards above. " +
+    "Cite the ids of the cards you used in sourceCardIds. " +
+    "Set confidence to high if a card directly answers, medium if partial, low if not clearly answered.";
+
+  return callStructured<GenerateAnswerResult>({
+    model: MODELS.answer,
+    system: SYSTEM,
+    cacheSystem: true,
+    messages: [{ role: "user", content: userText }],
+    tool: {
+      name: "submit_answer",
+      description:
+        "Submit the grounded answer to the customer question based only on the provided knowledge cards.",
+      input_schema: {
+        type: "object",
+        properties: {
+          answer: {
+            type: "string",
+            description:
+              "The concise, grounded answer for a live call, or a statement that it cannot be confirmed from the knowledge base.",
+          },
+          confidence: {
+            type: "string",
+            enum: ["high", "medium", "low"],
+            description:
+              "high = a card directly answers; medium = partial; low = not clearly answered.",
+          },
+          sourceCardIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Ids of the knowledge cards used to support the answer.",
+          },
+          canSpeak: {
+            type: "boolean",
+            description: "Whether this answer is safe to speak aloud (only high/medium).",
+          },
+        },
+        required: ["answer", "confidence", "sourceCardIds", "canSpeak"],
+      },
+    },
+  });
 }
