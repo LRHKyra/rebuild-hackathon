@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "call-sim": "node scripts/call-sim.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.101.0",
@@ -15,7 +16,8 @@
     "next": "16.2.7",
     "openai": "^6.42.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
