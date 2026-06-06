@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       response.answerCard = answerCard;
     }
 
-    if (speaker === "rep" && looksLikeFactStatement(text)) {
+    if ((speaker === "rep" || speaker === "unknown") && looksLikeFactStatement(text)) {
       const cards = await getStore().list(companyId);
       const contradiction = await detectContradiction({
         statement: text,

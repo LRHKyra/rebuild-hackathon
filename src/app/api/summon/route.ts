@@ -129,6 +129,17 @@ async function answerForSummon(params: {
   const question = memory.latestQuestion;
   if (!question) return memory.latestAnswer;
 
+  // Fast path for live calls: the transcript route precomputes the answer as soon
+  // as it detects a question. When Vesper is summoned, speak that prepared answer
+  // instead of making the room wait for another retrieval + LLM round trip.
+  if (
+    memory.latestAnswer &&
+    memory.latestAnswer.questionId === question.id &&
+    memory.latestAnswer.canSpeak
+  ) {
+    return memory.latestAnswer;
+  }
+
   const createdAt = new Date().toISOString();
   const retrieved = await retrieve({
     companyId: params.companyId,
