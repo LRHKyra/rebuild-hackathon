@@ -50,11 +50,12 @@ npm run dev                  # http://localhost:3000
 
 ### Environment variables
 
-| Variable               | Where it lives        | Purpose                                      |
-| ---------------------- | --------------------- | -------------------------------------------- |
-| `ELEVENLABS_API_KEY`   | **server only**       | Mints signed URLs. Never sent to the client. |
-| `ELEVENLABS_AGENT_ID`  | **server only**       | The Conversational AI agent to connect to.   |
-| `NEXT_PUBLIC_APP_URL`  | client + server       | App base URL (`http://localhost:3000` local).|
+| Variable               | Where it lives        | Purpose                                         |
+| ---------------------- | --------------------- | ----------------------------------------------- |
+| `ELEVENLABS_API_KEY`   | **server only**       | Scribe STT tokens + TTS. Never sent to client.  |
+| `ELEVENLABS_VOICE_ID`  | **server only**       | The voice Vesper speaks with (TTS).             |
+| `LLM_API_KEY`          | **server only**       | Question detection, answering, contradiction.   |
+| `NEXT_PUBLIC_APP_URL`  | client + server       | App base URL (`http://localhost:3000` local).   |
 
 Secrets are read **at request time** inside the route, so `npm run build` and CI
 never need real credentials.
@@ -63,15 +64,19 @@ never need real credentials.
 
 ## Verify the voice loop (manual step)
 
-The live voice loop is our core risk — prove it early.
+The voice loop is our core risk — prove it early. It is two separate primitives:
+**Scribe realtime STT** (mic → transcript) and **TTS** (a string → spoken audio).
+Vesper does NOT use Conversational AI (its answers must pass our grounding pipeline).
 
-1. Create an ElevenLabs Conversational AI agent; copy its **Agent ID** and an
-   **API key**.
-2. Put both in `.env.local` (`ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`).
-3. `npm run dev`, open the app, click **Start**, allow the mic, and **speak**.
-4. ✅ Success = you hear the agent reply and the transcript fills in.
-5. If connection fails, the UI drops into the **no-voice fallback** state — the
-   rest of the demo still works.
+1. Copy an ElevenLabs **API key** and pick a **voice id** for TTS.
+2. Put them in `.env.local` (`ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`), plus
+   your `LLM_API_KEY`.
+3. `npm run dev`, open the app, click **Start**, allow the mic, and **speak** →
+   your words appear in the transcript (STT). Trigger a spoken reply → you hear
+   Vesper via TTS.
+4. ✅ Success = you both see your speech transcribed and hear synthesized speech.
+5. STT is paused while TTS plays (half-duplex); use a headset to avoid the mic
+   re-capturing Vesper. If voice fails, the typed-transcript fallback still works.
 
 ---
 
@@ -81,8 +86,8 @@ The repo is committed locally only. To ship:
 
 1. Push to GitHub (create the remote yourself; the kickoff did not).
 2. In Vercel: **Import** the GitHub repo (framework auto-detects as Next.js).
-3. Add the three env vars under **Settings → Environment Variables** for both
-   **Production** and **Preview**.
+3. Add the env vars from `.env.example` under **Settings → Environment Variables**
+   for both **Production** and **Preview**.
 4. Push to `main` → Production deploy. Open a PR → Preview deploy.
 
 CI ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) runs lint + build
@@ -97,14 +102,21 @@ on every push and PR using dummy env values.
 - **Branch + PR only for risky changes**; otherwise commit to `main`.
 - **No secrets in git.** `.env.local` is ignored; `.env.example` is committed.
 - **Feature freeze at hour 9** — bug fixes only after.
-- **Principles changes need team agreement** — flag, don't do silently.
+- **The spec (`/spec`) is the source of truth** — it supersedes `principles.md`;
+  update the spec before the code.
 
 ---
 
 ## What's built right now
 
-- ✅ Voice loop ([`spec/features/voice-loop.md`](./spec/features/voice-loop.md)):
-  mic → `/api/elevenlabs/signed-url` → ElevenLabs → transcript, with a no-voice
-  fallback. Real and idea-agnostic.
-- ⏳ Product flow: placeholder. Everything tied to the product idea is marked
-  `// TODO(spec): see /spec/product.md`. Fill in `product.md`, then build it.
+We are mid-pivot from the kickoff scaffold to **Vesper** (see
+[`spec/product.md`](./spec/product.md)).
+
+- 📝 Spec is current: `product.md` (Vesper), `principles.md`, and
+  `features/voice-loop.md` (Scribe STT + TTS) reflect the agreed direction.
+- ⚠️ Code is being migrated: the original Conversational AI scaffold
+  (`useConversation` / `/api/elevenlabs/signed-url`) is the **wrong primitive** and
+  is being replaced by Scribe realtime STT (in) + `textToSpeech.convert` (out).
+- ⏳ Product flow (knowledge ingestion, retrieval, ad-hoc grounded answers,
+  wake-word summon, contradiction detection) builds on the corrected voice loop —
+  see the workstreams in `product.md §14`.

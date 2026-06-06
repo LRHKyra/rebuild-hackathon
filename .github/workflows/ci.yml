@@ -19,5 +19,6 @@ jobs:
       - run: npm run build
         env:
           ELEVENLABS_API_KEY: dummy
-          ELEVENLABS_AGENT_ID: dummy
+          ELEVENLABS_VOICE_ID: dummy
+          LLM_API_KEY: dummy
           NEXT_PUBLIC_APP_URL: http://localhost:3000

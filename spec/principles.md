@@ -1,28 +1,59 @@
 # Architectural Principles
 
-These are the durable constraints. Code must always obey them. Changing this
-file is a deliberate, team-agreed act.
+These are the durable constraints. Code must always obey them. The product spec
+(`/spec/product.md` and `/spec/features/*`) is the source of truth; where these
+principles ever conflict with the spec, the spec wins and this file is updated.
 
 ## Stack
 - Next.js (App Router) + TypeScript + Tailwind. Deploy: Vercel.
-- Official ElevenLabs SDK is preferred. No other non-essential dependencies.
+- ElevenLabs official SDK for voice: **Scribe realtime STT** (in) and
+  **text-to-speech `convert`** (out). NOT Conversational AI — Vesper's answers
+  must be gated through our own grounding pipeline, so we never hand control to an
+  autonomous agent.
+- An LLM provider (server-side) for question detection, grounded answering, and
+  contradiction detection. Embeddings + a vector store for retrieval.
 
 ## Boundaries
-- No auth. No database. Persistence is static fixtures.
-- No state-management library, no second app, no backend outside Next.js.
-- No broad abstractions for future scale. Favor explicit over clever; keep files small.
+- No auth. No permissions. No third-party meeting integrations (Zoom/Meet/Teams),
+  CRM sync, calendars, or analytics dashboards.
+- One Next.js app: UI + API route handlers. No separate backend service.
+- Build knowledge management for real (ingestion → chunking → embeddings →
+  retrieval with citations). Do not shortcut it by stuffing all docs into a prompt.
+- Favor explicit over clever; keep files small and focused.
+
+## Answers are always ad hoc
+- Vesper's spoken and suggested answers are generated live by the LLM from the
+  actual question + retrieved knowledge. No canned audio, no pre-scripted answers.
+- Generation may *start* when a question is detected (to populate the private
+  panel and cut dead air), and is regenerated if the conversation has moved on.
 
 ## Secrets
-- API key and agent ID are server-side only, never sent to the client.
-- The client gets a signed URL from /api/elevenlabs/signed-url; it never holds a secret.
+- All keys are server-side only, never sent to the client: `ELEVENLABS_API_KEY`,
+  `LLM_API_KEY`, and any datastore/vector credentials.
+- The browser only ever receives short-lived, single-use tokens minted by our
+  server routes (e.g. the Scribe realtime token) — never a raw key.
 - Validate env at request time inside the route, not at import/build time, so
   builds and CI never need real secrets.
 
+## Voice reliability
+- When Vesper speaks (TTS), the mic re-captures its own audio. Use half-duplex
+  gating: pause/stop STT while TTS plays, resume when playback ends. Demo with a
+  headset. Enable browser `echoCancellation`.
+
 ## Risk & demo posture
-- The live voice loop is the core risk: prove it before building anything fancy.
+- The voice loop is the core risk: prove Scribe STT (transcript on screen) +
+  on-demand TTS (a string spoken in the browser) before building anything fancy.
+- Live STT is the primary path; a typed/scripted transcript runner is the demo
+  safety fallback for the *input* side only — Vesper's reasoning and answers stay
+  live regardless.
 - Demo reliability beats feature completeness.
 - Feature freeze at hour 9 — bug fixes only after.
 - One repo, one production deploy. Keep main green and deployable.
 
 ## Decisions (append as they're made, with a one-line why)
 - (seed) SDD: spec is source of truth; code traces to spec. — keeps 3 people aligned without meetings.
+- Spec supersedes principles: overwrite this file when it conflicts with the spec. — the spec is what we actually agreed to build.
+- Voice loop = Scribe STT + on-demand TTS, not Conversational AI. — answers must pass our grounding/refusal pipeline; an autonomous agent can't be gated.
+- Real knowledge management (embeddings + vector retrieval + citations), not prompt-stuffing. — retrieval quality is the product's credibility.
+- Added LLM provider dependency + `LLM_API_KEY` (server-side). — detection/answering/contradiction need an LLM beyond ElevenLabs.
+- Datastore + vector store permitted (replaces the old "no database" rule). — knowledge management needs persistence + embeddings.
