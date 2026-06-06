@@ -11,6 +11,8 @@
 //   --base <url>         server base (default http://localhost:3000)
 //   --company <id>       company id (default demo-company)
 //   --call <id>          call id (default sim-call)
+//   --verbose, --debug   show the raw LLM I/O (detectQuestion, retrieved cards,
+//                        generateAnswer, detectContradiction, token usage)
 //
 // Requires the dev server running with real ANTHROPIC_API_KEY + OPENAI_API_KEY.
 
@@ -35,11 +37,20 @@ async function resolveDocs(docArg) {
   return files;
 }
 
+// Boolean flags take no value (present = on); everything else is a key/value pair.
+const BOOLEAN_FLAGS = new Set(["verbose", "debug"]);
+
 function parseArgs(argv) {
   const args = {};
-  for (let i = 0; i < argv.length; i += 2) {
+  for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i]?.replace(/^--/, "");
-    if (key) args[key] = argv[i + 1];
+    if (!key || argv[i]?.[0] !== "-") continue;
+    if (BOOLEAN_FLAGS.has(key)) {
+      args[key] = true;
+    } else {
+      args[key] = argv[i + 1];
+      i += 1;
+    }
   }
   return args;
 }
@@ -48,12 +59,86 @@ const args = parseArgs(process.argv.slice(2));
 const base = (args.base ?? "http://localhost:3000").replace(/\/$/, "");
 const companyId = args.company ?? "demo-company";
 const callId = args.call ?? "sim-call";
+const verbose = Boolean(args.verbose || args.debug);
 
 if (!args.doc || !args.transcript) {
   console.error(
     "Usage: npm run call-sim -- --doc <file.txt|md|pdf> --transcript <lines.txt>",
   );
   process.exit(1);
+}
+
+// Pretty-prints the server's debug payload under an indented "🔎 debug" header.
+// Every field is optional (older server shapes omit them), so each access is guarded.
+function printDebug(debug) {
+  if (!debug || typeof debug !== "object") return;
+  const has = (v) => v !== undefined && v !== null;
+  const fmt = (v) =>
+    typeof v === "string" ? v : JSON.stringify(v);
+
+  console.log("   🔎 debug");
+
+  // detectQuestion result
+  const d = debug.detect;
+  if (has(d) && typeof d === "object") {
+    console.log("      detectQuestion:");
+    if (has(d.hasQuestion)) console.log(`         hasQuestion: ${fmt(d.hasQuestion)}`);
+    if (has(d.question)) console.log(`         question: ${fmt(d.question)}`);
+    if (has(d.category)) console.log(`         category: ${fmt(d.category)}`);
+    if (has(d.urgency)) console.log(`         urgency: ${fmt(d.urgency)}`);
+  }
+
+  // retrieved cards: "title  score", sorted by score desc
+  const retrieved = debug.retrieved;
+  if (Array.isArray(retrieved) && retrieved.length > 0) {
+    console.log("      retrieved:");
+    const sorted = [...retrieved].sort(
+      (a, b) => (b?.score ?? 0) - (a?.score ?? 0),
+    );
+    for (const card of sorted) {
+      const title = has(card?.title) ? card.title : "(untitled)";
+      const score = has(card?.score) ? card.score : "?";
+      console.log(`         ${title}  ${score}`);
+    }
+  }
+
+  // raw generateAnswer output
+  const ans = debug.answer;
+  if (has(ans) && typeof ans === "object") {
+    console.log("      generateAnswer:");
+    if (has(ans.spokenAnswer)) console.log(`         spokenAnswer: ${fmt(ans.spokenAnswer)}`);
+    if (has(ans.rawCanSpeak)) console.log(`         canSpeak (model raw): ${fmt(ans.rawCanSpeak)}`);
+    if (has(ans.finalCanSpeak)) console.log(`         canSpeak (route final): ${fmt(ans.finalCanSpeak)}`);
+    // Surface any remaining fields we didn't explicitly call out.
+    for (const [k, v] of Object.entries(ans)) {
+      if (["spokenAnswer", "rawCanSpeak", "finalCanSpeak"].includes(k)) continue;
+      console.log(`         ${k}: ${fmt(v)}`);
+    }
+  }
+
+  // detectContradiction result — printed even when false
+  const con = debug.contradiction;
+  if (has(con) && typeof con === "object") {
+    console.log("      detectContradiction:");
+    if (has(con.isCheckableClaim)) console.log(`         isCheckableClaim: ${fmt(con.isCheckableClaim)}`);
+    if (has(con.hasContradiction)) console.log(`         hasContradiction: ${fmt(con.hasContradiction)}`);
+    for (const [k, v] of Object.entries(con)) {
+      if (["isCheckableClaim", "hasContradiction"].includes(k)) continue;
+      console.log(`         ${k}: ${fmt(v)}`);
+    }
+  }
+
+  // contradiction gating decision (why we did / didn't check)
+  const gating = debug.gating;
+  if (has(gating) && typeof gating === "object") {
+    console.log(`      gating: ${fmt(gating)}`);
+  }
+
+  // token usage
+  const usage = debug.usage;
+  if (has(usage)) {
+    console.log(`      usage: ${fmt(usage)}`);
+  }
 }
 
 async function main() {
@@ -104,7 +189,8 @@ async function main() {
     const text = m ? m[2] : line;
 
     console.log(`[${speaker}] ${text}`);
-    const res = await fetch(`${base}/api/call/transcript`, {
+    const transcriptUrl = `${base}/api/call/transcript${verbose ? "?debug=1" : ""}`;
+    const res = await fetch(transcriptUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ callId, companyId, speaker, text }),
@@ -117,7 +203,9 @@ async function main() {
 
     if (a.isWake) {
       if (a.summon) {
-        console.log(`   🔔 SUMMON → would speak: "${a.summon.answer}"`);
+        // Speak the natural, no-markdown spoken version (what TTS actually says).
+        const spoken = a.summon.spokenAnswer ?? a.summon.answer;
+        console.log(`   🔔 SUMMON → would speak: "${spoken}"`);
       } else {
         console.log("   🔔 SUMMON → no answer ready to speak");
       }
@@ -140,6 +228,7 @@ async function main() {
     if (!a.isWake && !a.detectedQuestion && !a.correctionCard) {
       console.log("   · (no action)");
     }
+    if (verbose && a.debug) printDebug(a.debug);
     console.log("");
   }
 }

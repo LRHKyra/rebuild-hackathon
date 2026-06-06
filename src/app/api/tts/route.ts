@@ -21,6 +21,50 @@ export const dynamic = "force-dynamic";
 // Guardrail: spoken answers are short (spec: < ~75 words). Cap input length.
 const MAX_TEXT_LENGTH = 5000;
 
+// Deterministic safety net: callers may pass markdown, but TTS must never read
+// literal markup aloud (e.g. "asterisk asterisk", "hash", "backtick"). This
+// strips/cleans common markdown so it sounds natural when spoken. Conservative
+// by design: it must not mangle ordinary punctuation, numbers, currency, or
+// hyphenated words mid-sentence.
+function stripMarkdownForSpeech(text: string): string {
+  return (
+    text
+      // Links: [label](url) -> label
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      // Inline code / code fences: drop backticks, keep contents.
+      .replace(/`+/g, "")
+      // Process line-by-line for line-anchored markers (headings, bullets, quotes).
+      .split("\n")
+      .map((line) => {
+        let out = line;
+        // Blockquote markers at line start (one or more ">").
+        out = out.replace(/^\s*>+\s?/, "");
+        // Heading hashes at line start ("#", "##", ...).
+        out = out.replace(/^\s*#{1,6}\s+/, "");
+        // Unordered list bullets at line start: -, *, • (require trailing space
+        // so we don't eat a leading hyphen of a hyphenated/negative token).
+        out = out.replace(/^\s*[-*•]\s+/, "");
+        // Ordered list markers at line start: "1." / "2)" etc. (require space).
+        out = out.replace(/^\s*\d+[.)]\s+/, "");
+        return out;
+      })
+      .join("\n")
+      // Bold/italic markers. Asterisks: only when wrapping content (paired) so
+      // standalone "*" or arithmetic "2 * 3" stays intact.
+      .replace(/\*{1,3}(\S(?:.*?\S)?)\*{1,3}/g, "$1")
+      // Underscores used for emphasis: require word boundaries so snake_case
+      // identifiers and mid-word underscores are left alone.
+      .replace(/(^|[\s(])_{1,3}(\S(?:.*?\S)?)_{1,3}(?=[\s).,!?;:]|$)/g, "$1$2")
+      // Collapse 3+ newlines down to a single paragraph break.
+      .replace(/\n{3,}/g, "\n\n")
+      // Collapse runs of spaces/tabs into a single space.
+      .replace(/[ \t]{2,}/g, " ")
+      // Trim trailing spaces on each line.
+      .replace(/[ \t]+\n/g, "\n")
+      .trim()
+  );
+}
+
 export async function POST(request: Request) {
   // Validate the request body at the boundary.
   let payload: unknown;
@@ -66,7 +110,10 @@ export async function POST(request: Request) {
 
   try {
     const client = new ElevenLabsClient({ apiKey });
-    const audioStream = await client.textToSpeech.convert(voiceId, { text });
+    const spokenText = stripMarkdownForSpeech(text);
+    const audioStream = await client.textToSpeech.convert(voiceId, {
+      text: spokenText,
+    });
     const audio = await streamToArrayBuffer(audioStream);
 
     return new Response(audio, {

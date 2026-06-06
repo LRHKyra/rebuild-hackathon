@@ -12,9 +12,21 @@ import type { KnowledgeCard, Severity } from "@/types";
 import { callStructured, MODELS } from "./client";
 
 const SYSTEM_PROMPT =
-  "You are privately assisting a sales rep during a live call. Detect only " +
-  "clear factual contradictions between what the rep said and the provided " +
-  "knowledge cards. Do not nitpick wording. Do not flag subjective claims.";
+  "You are privately assisting a sales rep during a live call. Judge the rep's " +
+  "statement on TWO independent dimensions, then call report_contradiction.\n\n" +
+  "1) isCheckableClaim: Set true ONLY if the statement is a clear, checkable " +
+  "FACTUAL assertion about the product, the company, or its capabilities — " +
+  "something that could be verified against documentation. Set false for " +
+  "chit-chat, greetings, pleasantries, opinions, subjective views, questions, " +
+  "or vague/non-specific statements.\n\n" +
+  "2) hasContradiction: Set true ONLY if the statement CLEARLY and confidently " +
+  "conflicts with a provided knowledge card — a real, egregious factual conflict " +
+  "grounded in the cards, not a difference of wording, nuance, or emphasis. When " +
+  "you are unsure, return false. Do not nitpick wording. Do not flag subjective " +
+  "claims. Minimize false positives, but do not miss a genuine factual conflict.\n\n" +
+  "These two flags are independent. A clear factual claim that is actually " +
+  "correct (matches or is consistent with the cards) is isCheckableClaim=true " +
+  "and hasContradiction=false. Only ground a contradiction in the cards.";
 
 const REPORT_TOOL = {
   name: "report_contradiction",
@@ -23,9 +35,19 @@ const REPORT_TOOL = {
   input_schema: {
     type: "object" as const,
     properties: {
+      isCheckableClaim: {
+        type: "boolean",
+        description:
+          "True only if the statement is a clear, checkable factual assertion " +
+          "about the product, company, or its capabilities — not chit-chat, " +
+          "pleasantries, opinions, questions, or vague statements.",
+      },
       hasContradiction: {
         type: "boolean",
-        description: "True only if there is a clear factual contradiction.",
+        description:
+          "True only if the statement clearly and confidently conflicts with a " +
+          "provided knowledge card (a real factual conflict, not wording, nuance, " +
+          "or emphasis). When unsure, false.",
       },
       repStatement: {
         type: "string",
@@ -50,7 +72,7 @@ const REPORT_TOOL = {
         description: "IDs of the knowledge cards that establish the fact.",
       },
     },
-    required: ["hasContradiction"],
+    required: ["isCheckableClaim", "hasContradiction"],
   },
 };
 
@@ -62,6 +84,7 @@ export type DetectContradictionInput = {
 };
 
 export type DetectContradictionResult = {
+  isCheckableClaim: boolean;
   hasContradiction: boolean;
   repStatement?: string;
   issue?: string;
@@ -77,7 +100,7 @@ export async function detectContradiction(
   input: DetectContradictionInput,
 ): Promise<DetectContradictionResult> {
   if (input.cards.length === 0) {
-    return { hasContradiction: false };
+    return { hasContradiction: false, isCheckableClaim: false };
   }
 
   const cardsBlock = input.cards

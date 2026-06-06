@@ -56,6 +56,7 @@ export async function POST(request: Request) {
         callId,
         questionId,
         answer: REFUSAL,
+        spokenAnswer: REFUSAL,
         sourceCardIds: [],
         confidence: "low",
         canSpeak: false,
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
       callId,
       questionId,
       answer: result.answer,
+      spokenAnswer: result.spokenAnswer,
       sourceCardIds: result.sourceCardIds,
       confidence: result.confidence,
       // Enforce: only high/medium may be spoken (§10B).

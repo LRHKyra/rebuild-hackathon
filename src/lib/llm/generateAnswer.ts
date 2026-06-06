@@ -15,7 +15,11 @@ const REFUSAL =
   "I do not have that confirmed in the product knowledge base. I would not want to guess.";
 
 const SYSTEM =
-  "You are Vesper, a company-specific expert assistant. Answer only using the provided knowledge cards. If the answer is not supported, say you cannot confirm from the knowledge base. Keep the answer concise and useful for a live call.";
+  "You are Vesper, a company-specific expert assistant. Answer only using the provided knowledge cards. If the answer is not supported, say you cannot confirm from the knowledge base. " +
+  "Produce TWO registers of the same answer (same facts, different form):\n" +
+  "1) answer = the PANEL text the rep silently reads. Rich and scannable; markdown is allowed; you may include an honest boundary or caveat.\n" +
+  "2) spokenAnswer = what Vesper SAYS ALOUD to the customer once summoned (§11/§12 Spoken Answer). Natural and confident, under 75 words, NO markdown (no *, **, #, bullets, or lists), plain spoken sentences only. Do NOT cite sources or say \"according to\" / \"the docs say\". Do NOT ask follow-up questions. Just speak the answer to the customer.\n" +
+  "Keep both consistent with the same underlying facts.";
 
 export type GenerateAnswerInput = {
   question: string;
@@ -26,6 +30,7 @@ export type GenerateAnswerInput = {
 
 export type GenerateAnswerResult = {
   answer: string;
+  spokenAnswer: string;
   confidence: Confidence;
   sourceCardIds: string[];
   canSpeak: boolean;
@@ -38,7 +43,13 @@ export async function generateAnswer(
 ): Promise<GenerateAnswerResult> {
   // No cards → refuse (§10A). The route short-circuits this, but keep it safe.
   if (input.cards.length === 0) {
-    return { answer: REFUSAL, confidence: "low", sourceCardIds: [], canSpeak: false };
+    return {
+      answer: REFUSAL,
+      spokenAnswer: REFUSAL,
+      confidence: "low",
+      sourceCardIds: [],
+      canSpeak: false,
+    };
   }
 
   const cardList = input.cards
@@ -54,6 +65,9 @@ export async function generateAnswer(
     transcriptBlock +
     `Knowledge cards:\n${cardList}\n\n` +
     "Answer the customer question using only the knowledge cards above. " +
+    "Return TWO registers: answer = the rich, scannable panel text the rep reads (markdown ok, may include an honest boundary/caveat); " +
+    "spokenAnswer = what Vesper says aloud — natural, confident, under 75 words, no markdown, no source citations, no follow-up questions. " +
+    "Keep both consistent (same facts). " +
     "Cite the ids of the cards you used in sourceCardIds. " +
     "Set confidence to high if a card directly answers, medium if partial, low if not clearly answered.";
 
@@ -72,7 +86,12 @@ export async function generateAnswer(
           answer: {
             type: "string",
             description:
-              "The concise, grounded answer for a live call, or a statement that it cannot be confirmed from the knowledge base.",
+              "PANEL text the rep silently reads: rich, scannable, grounded answer (markdown allowed; may include an honest boundary/caveat), or a statement that it cannot be confirmed from the knowledge base.",
+          },
+          spokenAnswer: {
+            type: "string",
+            description:
+              "What Vesper SAYS ALOUD to the customer: natural, confident, under 75 words, NO markdown (no *, **, #, bullets, or lists), do NOT cite sources or say 'according to'/'the docs say', no follow-up questions. Same facts as answer, spoken register.",
           },
           confidence: {
             type: "string",
@@ -90,7 +109,7 @@ export async function generateAnswer(
             description: "Whether this answer is safe to speak aloud (only high/medium).",
           },
         },
-        required: ["answer", "confidence", "sourceCardIds", "canSpeak"],
+        required: ["answer", "spokenAnswer", "confidence", "sourceCardIds", "canSpeak"],
       },
     },
   });

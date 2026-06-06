@@ -39,9 +39,22 @@ export type StructuredCallOptions = {
   cacheSystem?: boolean;
 };
 
-// Calls Claude forcing the single tool, and returns the tool input typed as T.
-// Throws if the model fails to produce the tool call.
-export async function callStructured<T>(opts: StructuredCallOptions): Promise<T> {
+// Result of a structured call, including the parsed value plus raw output and
+// token usage for observability (logging, cost tracking, eval harnesses).
+export type StructuredResult<T> = {
+  value: T;
+  raw: unknown;
+  usage: Anthropic.Usage;
+  stopReason: string | null;
+  model: string;
+};
+
+// Calls Claude forcing the single tool, returning the typed tool input along
+// with the raw tool input, token usage, stop reason, and model. Throws if the
+// model fails to produce the tool call.
+export async function callStructuredDebug<T>(
+  opts: StructuredCallOptions,
+): Promise<StructuredResult<T>> {
   const system: Anthropic.TextBlockParam[] = [
     {
       type: "text",
@@ -63,5 +76,18 @@ export async function callStructured<T>(opts: StructuredCallOptions): Promise<T>
   if (!toolUse || toolUse.type !== "tool_use") {
     throw new Error("Model did not return the expected structured tool call.");
   }
-  return toolUse.input as T;
+  return {
+    value: toolUse.input as T,
+    raw: toolUse.input,
+    usage: response.usage,
+    stopReason: response.stop_reason,
+    model: response.model,
+  };
+}
+
+// Calls Claude forcing the single tool, and returns the tool input typed as T.
+// Throws if the model fails to produce the tool call. Drop-in helper for callers
+// that only need the parsed value; see callStructuredDebug for usage/raw output.
+export async function callStructured<T>(opts: StructuredCallOptions): Promise<T> {
+  return (await callStructuredDebug<T>(opts)).value;
 }

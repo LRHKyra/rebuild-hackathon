@@ -63,7 +63,10 @@ export type AnswerCard = {
   id: string;
   callId: string;
   questionId: string;
+  // Rich, scannable answer for the private panel (markdown ok).
   answer: string;
+  // Short, natural, no-markdown version for TTS (what Vesper says aloud).
+  spokenAnswer: string;
   sourceCardIds: string[];
   confidence: Confidence;
   canSpeak: boolean;
@@ -87,6 +90,16 @@ export type RetrievedCard = {
   score: number;
 };
 
+// Optional observability payload, attached only when ?debug=1 (or LLM_DEBUG=1).
+// Lets call-sim --verbose show the actual LLM I/O. Loose types on purpose.
+export type TranscriptDebug = {
+  detect?: unknown;
+  retrieved?: { id: string; title: string; score: number }[];
+  answer?: unknown;
+  contradiction?: unknown;
+  gating?: unknown;
+};
+
 // Response shape of POST /api/call/transcript — the big seam (Lane B → Lane C).
 export type TranscriptAnalysis = {
   detectedQuestion?: DetectedQuestion | null;
@@ -96,6 +109,8 @@ export type TranscriptAnalysis = {
   isWake?: boolean;
   // On a wake line, the latest speakable answer that should be spoken aloud.
   summon?: AnswerCard | null;
+  // Present only in debug mode.
+  debug?: TranscriptDebug;
 };
 
 // ── Product placeholder (Lane C) ────────────────────────────────────────────
