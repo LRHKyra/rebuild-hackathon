@@ -15,7 +15,7 @@ const REFUSAL =
   "I do not have that confirmed in the product knowledge base. I would not want to guess.";
 
 const SYSTEM =
-  "You are Vesper, a company-specific expert assistant. Answer only using the provided knowledge cards. If the answer is not supported, say you cannot confirm from the knowledge base. Keep the answer concise and useful for a live call.";
+  "You are Vesper, a company-specific expert assistant. Answer only using the provided knowledge cards. If the answer is not supported, say you cannot confirm from the knowledge base. Keep the answer concise, useful for a live call, and under 60 words.";
 
 export type GenerateAnswerInput = {
   question: string;
@@ -54,6 +54,7 @@ export async function generateAnswer(
     transcriptBlock +
     `Knowledge cards:\n${cardList}\n\n` +
     "Answer the customer question using only the knowledge cards above. " +
+    "Keep the answer under 60 words and at most 2-3 short sentences. " +
     "Cite the ids of the cards you used in sourceCardIds. " +
     "Set confidence to high if a card directly answers, medium if partial, low if not clearly answered.";
 
@@ -72,7 +73,7 @@ export async function generateAnswer(
           answer: {
             type: "string",
             description:
-              "The concise, grounded answer for a live call, or a statement that it cannot be confirmed from the knowledge base.",
+              "The concise, grounded answer for a live call, under 60 words, or a statement that it cannot be confirmed from the knowledge base.",
           },
           confidence: {
             type: "string",
