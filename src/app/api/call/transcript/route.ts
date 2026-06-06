@@ -9,7 +9,6 @@
 import { NextResponse } from "next/server";
 import { detectWakeWord } from "@/lib/wakeword";
 import { retrieve } from "@/lib/retrieval";
-import { getStore } from "@/lib/store";
 import { detectQuestion, generateAnswer, detectContradiction } from "@/lib/llm";
 import { MissingEnvError } from "@/lib/env";
 import type {
@@ -118,9 +117,14 @@ export async function POST(request: Request) {
       return NextResponse.json(analysis);
     }
 
-    // 3) A statement → check it against the KB for a clear contradiction.
-    const cards = await getStore().list(companyId);
-    const contra = await detectContradiction({ statement: text, cards });
+    // 3) A statement → check it against the RELEVANT (retrieved) cards for a clear
+    // contradiction. Passing the whole KB overflows the model's context at real
+    // corpus scale (a 140-page PDF alone is ~200k tokens).
+    const relevant = await retrieve({ companyId, query: text, topK: 8 });
+    const contra = await detectContradiction({
+      statement: text,
+      cards: relevant.map((r) => r.card),
+    });
     if (contra.hasContradiction) {
       const correctionCard: CorrectionCard = {
         id: crypto.randomUUID(),

@@ -14,8 +14,26 @@
 //
 // Requires the dev server running with real ANTHROPIC_API_KEY + OPENAI_API_KEY.
 
-import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { readFile, stat, readdir } from "node:fs/promises";
+import { basename, join } from "node:path";
+
+// Resolves --doc (a file, a directory, or a comma-separated list) into a flat
+// list of ingestible files (.txt/.md/.pdf).
+async function resolveDocs(docArg) {
+  const parts = docArg.split(",").map((s) => s.trim()).filter(Boolean);
+  const files = [];
+  for (const p of parts) {
+    const st = await stat(p);
+    if (st.isDirectory()) {
+      for (const entry of await readdir(p)) {
+        if (/\.(txt|md|pdf)$/i.test(entry)) files.push(join(p, entry));
+      }
+    } else {
+      files.push(p);
+    }
+  }
+  return files;
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -39,25 +57,34 @@ if (!args.doc || !args.transcript) {
 }
 
 async function main() {
-  // 1) Ingest the real document via the upload path.
-  const docBytes = await readFile(args.doc);
-  const form = new FormData();
-  form.append("file", new Blob([docBytes]), basename(args.doc));
-  form.append("companyId", companyId);
-  form.append("title", basename(args.doc));
-
-  console.log(`\n📥 Ingesting ${args.doc} …`);
-  const ingestRes = await fetch(`${base}/api/knowledge`, {
-    method: "POST",
-    body: form,
-  });
-  const ingestBody = await ingestRes.json().catch(() => ({}));
-  if (!ingestRes.ok) {
-    console.error(`   ✗ ingest failed (HTTP ${ingestRes.status}): ${ingestBody.error ?? ""}`);
-    if (ingestRes.status === 503) console.error("   → set real ANTHROPIC_API_KEY + OPENAI_API_KEY in .env.local");
+  // 1) Ingest the real document(s) via the upload path.
+  const docs = await resolveDocs(args.doc);
+  if (docs.length === 0) {
+    console.error(`No .txt/.md/.pdf files found at ${args.doc}`);
     process.exit(1);
   }
-  console.log(`   ✓ ${ingestBody.cardsCreated} knowledge card(s) created`);
+  console.log(`\n📥 Ingesting ${docs.length} document(s) …`);
+  let totalCards = 0;
+  for (const doc of docs) {
+    const docBytes = await readFile(doc);
+    const form = new FormData();
+    form.append("file", new Blob([docBytes]), basename(doc));
+    form.append("companyId", companyId);
+    form.append("title", basename(doc));
+    const ingestRes = await fetch(`${base}/api/knowledge`, {
+      method: "POST",
+      body: form,
+    });
+    const ingestBody = await ingestRes.json().catch(() => ({}));
+    if (!ingestRes.ok) {
+      console.error(`   ✗ ${basename(doc)} failed (HTTP ${ingestRes.status}): ${ingestBody.error ?? ""}`);
+      if (ingestRes.status === 503) console.error("   → set real ANTHROPIC_API_KEY + OPENAI_API_KEY in .env.local");
+      process.exit(1);
+    }
+    console.log(`   ✓ ${basename(doc)} → ${ingestBody.cardsCreated} card(s)`);
+    totalCards += ingestBody.cardsCreated ?? 0;
+  }
+  console.log(`   total: ${totalCards} knowledge card(s)`);
 
   // Build an id → title map so we can show which cards were cited.
   const listRes = await fetch(`${base}/api/knowledge?companyId=${encodeURIComponent(companyId)}`);
