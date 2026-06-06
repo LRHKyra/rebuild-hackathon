@@ -1,14 +1,26 @@
-// Traces to: spec/product.md §13 (POST /api/call/transcript) + §6/§10/§11 + plan.
+// Traces to: spec/product.md §13 (POST /api/call/transcript) + §6/§10/§11.
 //
 // The call-analysis loop = "whisper mode". For each transcript line:
-//   - wake word ("Vesper, …")? → return the latest speakable answer to summon.
+//   - wake word ("Vesper, can you take that one?")? → return isWake + the latest
+//     speakable answer so the client can summon Vesper (audio via /api/summon).
 //   - else a question? → detect → retrieve → grounded answer (or refusal).
-//   - else a statement? → GATE (rep + relevant), then flag only egregious,
-//     grounded contradictions of a checkable claim.
-// Each LLM call gets a small rolling transcript window for context. Returns
-// TranscriptAnalysis (+ a debug block when ?debug=1). Reference impl Lane B extends.
+//   - else a statement? → GATE (rep/unlabeled + relevant), then flag only an
+//     egregious, grounded contradiction of a checkable claim.
+//
+// Shared call state (transcript history + latest question/answer/correction) lives
+// in callState.ts so /api/summon can speak the prepared answer without recomputing.
+// Each LLM call gets a rolling transcript window for context. Returns
+// TranscriptAnalysis (+ a debug block when ?debug=1).
 
 import { NextResponse } from "next/server";
+import {
+  addTranscriptEvent,
+  getCallMemory,
+  rememberAnswer,
+  rememberCorrection,
+  rememberQuestion,
+  transcriptWindow,
+} from "@/lib/callState";
 import { detectWakeWord } from "@/lib/wakeword";
 import { retrieve } from "@/lib/retrieval";
 import { detectQuestion, generateAnswer, detectContradiction } from "@/lib/llm";
@@ -24,23 +36,19 @@ import type {
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_CALL = "demo-call";
 const DEFAULT_COMPANY = "demo-company";
 const REFUSAL =
   "I do not have that confirmed in the product knowledge base. I would not want to guess.";
 
-// How many recent lines of context to give the LLMs (the rolling window).
-const MAX_WINDOW_LINES = 4;
+// Cards to retrieve for the contradiction check (§10C: scope to retrieved, not the
+// full KB, so a 140-page PDF doesn't overflow the model's context at real scale).
+const CONTRADICTION_TOP_K = 8;
 // Minimum top-card similarity before we bother running a contradiction check.
 // Below this, the statement isn't really about our product → skip. Tunable.
 const CONTRADICTION_SCORE_THRESHOLD = Number(
   process.env.CONTRADICTION_SCORE_THRESHOLD ?? "0.3",
 );
-
-// Per-call memory of the latest speakable answer, so a wake-word line (which may
-// not itself contain the question) can summon the answer from a prior turn.
-const lastSpeakable = new Map<string, AnswerCard>();
-// Per-call rolling transcript history (recent lines), for LLM context.
-const history = new Map<string, string[]>();
 
 function isDebug(request: Request): boolean {
   return (
@@ -66,38 +74,31 @@ export async function POST(request: Request) {
   if (!text) {
     return NextResponse.json({ error: "`text` is required." }, { status: 400 });
   }
-  const callId =
-    typeof body.callId === "string" && body.callId.trim()
-      ? body.callId.trim()
-      : "demo-call";
-  const companyId =
-    typeof body.companyId === "string" && body.companyId.trim()
-      ? body.companyId.trim()
-      : DEFAULT_COMPANY;
-  const speaker: Speaker =
-    body.speaker === "rep" || body.speaker === "prospect" ? body.speaker : "unknown";
-
-  // Rolling context: the window is the PRIOR lines; this line is what we inspect.
-  const prior = history.get(callId) ?? [];
-  const windowText = prior.join("\n");
-  history.set(callId, [...prior, text].slice(-MAX_WINDOW_LINES));
+  const callId = stringOrDefault(body.callId, DEFAULT_CALL);
+  const companyId = stringOrDefault(body.companyId, DEFAULT_COMPANY);
+  const speaker = parseSpeaker(body.speaker);
   const debug = isDebug(request);
 
+  // Record this line first; the rolling window then includes it as context.
+  addTranscriptEvent({ callId, speaker, text });
+  const window = transcriptWindow(callId);
+
   try {
-    // 1) Summon: the line called Vesper by name → speak the latest ready answer.
-    if (detectWakeWord(text)) {
+    // 1) Summon: the line called Vesper by name → surface the latest speakable
+    // answer. The actual audio is produced by /api/summon; here we just signal the
+    // wake and hand back the prepared answer (or null if none is ready).
+    if (detectWakeWord(text).matched) {
+      const latest = getCallMemory(callId).latestAnswer;
+      const summon = latest?.canSpeak ? latest : null;
       const analysis: TranscriptAnalysis = {
         isWake: true,
-        summon: lastSpeakable.get(callId) ?? null,
+        summon,
         ...(debug ? { debug: { gating: { isWake: true } } } : {}),
       };
       return NextResponse.json(analysis);
     }
 
-    const detected = await detectQuestion({
-      text,
-      transcriptWindow: windowText || undefined,
-    });
+    const detected = await detectQuestion({ text, transcriptWindow: window });
 
     // 2) A question → retrieve + grounded answer (whisper / private panel).
     if (detected.hasQuestion && detected.question) {
@@ -107,11 +108,12 @@ export async function POST(request: Request) {
         callId,
         question: detected.question,
         speaker,
-        transcriptWindow: windowText || text,
+        transcriptWindow: window,
         status: "new",
         category: detected.category,
         createdAt,
       };
+      rememberQuestion(detectedQuestion);
 
       const retrieved = await retrieve({ companyId, query: detected.question });
       let answerCard: AnswerCard;
@@ -131,7 +133,7 @@ export async function POST(request: Request) {
       } else {
         const result = await generateAnswer({
           question: detected.question,
-          transcriptContext: windowText || undefined,
+          transcriptContext: window || undefined,
           cards: retrieved.map((r) => r.card),
         });
         answerCard = {
@@ -142,6 +144,7 @@ export async function POST(request: Request) {
           spokenAnswer: result.spokenAnswer,
           sourceCardIds: result.sourceCardIds,
           confidence: result.confidence,
+          // Enforce: only high/medium may be spoken (§10B).
           canSpeak: result.canSpeak && result.confidence !== "low",
           createdAt,
         };
@@ -154,9 +157,7 @@ export async function POST(request: Request) {
           finalCanSpeak: answerCard.canSpeak,
         };
       }
-
-      // Remember the latest speakable answer for a later wake-word summon.
-      if (answerCard.canSpeak) lastSpeakable.set(callId, answerCard);
+      rememberAnswer(answerCard);
 
       const analysis: TranscriptAnalysis = {
         detectedQuestion,
@@ -177,7 +178,11 @@ export async function POST(request: Request) {
     // 3) A statement → only worth a contradiction check if it's the rep (not the
     // prospect) AND retrieval actually found a relevant card. These cheap gates
     // kill false alarms on chit-chat and keep it real-time.
-    const relevant = await retrieve({ companyId, query: text, topK: 8 });
+    const relevant = await retrieve({
+      companyId,
+      query: text,
+      topK: CONTRADICTION_TOP_K,
+    });
     const topScore = relevant[0]?.score ?? 0;
     const speakerOk = speaker !== "prospect"; // rep or unlabeled
     const relevanceOk = topScore >= CONTRADICTION_SCORE_THRESHOLD;
@@ -192,9 +197,7 @@ export async function POST(request: Request) {
       checked: shouldCheck,
     };
 
-    let contra:
-      | Awaited<ReturnType<typeof detectContradiction>>
-      | undefined;
+    let contra: Awaited<ReturnType<typeof detectContradiction>> | undefined;
     if (shouldCheck) {
       contra = await detectContradiction({
         statement: text,
@@ -214,10 +217,17 @@ export async function POST(request: Request) {
         severity: contra.severity ?? "medium",
         createdAt: new Date().toISOString(),
       };
+      rememberCorrection(correctionCard);
       const analysis: TranscriptAnalysis = {
         correctionCard,
         ...(debug
-          ? { debug: { retrieved: toRetrievedDebug(relevant), contradiction: contra, gating } }
+          ? {
+              debug: {
+                retrieved: toRetrievedDebug(relevant),
+                contradiction: contra,
+                gating,
+              },
+            }
           : {}),
       };
       return NextResponse.json(analysis);
@@ -251,4 +261,14 @@ export async function POST(request: Request) {
       { status: 502 },
     );
   }
+}
+
+function parseSpeaker(value: unknown): Speaker {
+  return value === "rep" || value === "prospect" || value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function stringOrDefault(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }

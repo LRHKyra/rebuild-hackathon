@@ -7,22 +7,44 @@
 //
 // This deliberately does NOT use Conversational AI. Verified against installed
 // @elevenlabs/react useScribe: { status, isConnected, partialTranscript,
-// committedTranscripts, error, connect({token}), disconnect, mute, unmute }.
+// committedTranscripts, error, connect({ token, modelId, microphone }),
+// disconnect, mute, unmute }.
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useScribe } from "@elevenlabs/react";
-import { fetchScribeToken, synthesizeSpeech } from "@/lib/elevenlabs";
+import { fetchScribeToken, safeErrorMessage, synthesizeSpeech } from "@/lib/elevenlabs";
+import { detectWakeWord } from "@/lib/wakeword";
 import { Transcript } from "@/components/Transcript";
-import type { TranscriptLine, VoiceStatus } from "@/types";
+import type {
+  AnswerCard,
+  CorrectionCard,
+  DetectedQuestion,
+  TranscriptLine,
+  VoiceStatus,
+} from "@/types";
 
 const SAMPLE_TTS_TEXT =
   "Hello, this is Vesper. The voice loop is working end to end.";
+const SCRIBE_MODEL_ID = "scribe_v2_realtime";
+const CALL_ID = "demo-call";
+const COMPANY_ID = "demo-company";
+
+type AnalysisResponse = {
+  detectedQuestion?: DetectedQuestion | null;
+  answerCard?: AnswerCard | null;
+  correctionCard?: CorrectionCard | null;
+};
 
 export function VoiceAgent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [ttsText, setTtsText] = useState(SAMPLE_TTS_TEXT);
+  const [question, setQuestion] = useState<DetectedQuestion | null>(null);
+  const [answer, setAnswer] = useState<AnswerCard | null>(null);
+  const [correction, setCorrection] = useState<CorrectionCard | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const analyzedTranscriptIds = useRef<Set<string>>(new Set());
 
   const scribe = useScribe({
     onError: (error) =>
@@ -41,12 +63,49 @@ export function VoiceAgent() {
     isFinal: segment.isFinal,
   }));
 
+  const analyzeTranscript = useCallback(async (text: string) => {
+    setAnalysisMessage("Analyzing live transcript...");
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/call/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callId: CALL_ID,
+          companyId: COMPANY_ID,
+          speaker: "unknown",
+          text,
+        }),
+      });
+
+      if (!response.ok) throw new Error(await safeErrorMessage(response));
+      const data = (await response.json()) as AnalysisResponse;
+      if (data.detectedQuestion) setQuestion(data.detectedQuestion);
+      if (data.answerCard) setAnswer(data.answerCard);
+      if (data.correctionCard) setCorrection(data.correctionCard);
+      setAnalysisMessage("Live transcript analyzed.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not analyze transcript.",
+      );
+    }
+  }, []);
+
   const start = useCallback(async () => {
     setErrorMessage(null);
     try {
       const token = await fetchScribeToken();
       // connect() requests mic permission and opens the Scribe WebSocket.
-      await scribe.connect({ token });
+      await scribe.connect({
+        token,
+        modelId: SCRIBE_MODEL_ID,
+        microphone: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Could not start transcription.",
@@ -101,6 +160,73 @@ export function VoiceAgent() {
       restore();
     }
   }, [ttsText, isSpeaking, scribe]);
+
+  const summon = useCallback(async (wakePhrase = "Vesper, can you take that one?") => {
+    if (isSpeaking) return;
+
+    setErrorMessage(null);
+    setAnalysisMessage("Summoning Vesper...");
+    setIsSpeaking(true);
+    const wasConnected = scribe.isConnected;
+    if (wasConnected) scribe.mute();
+
+    const restore = () => {
+      if (wasConnected) scribe.unmute();
+      setIsSpeaking(false);
+    };
+
+    try {
+      const response = await fetch("/api/summon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callId: CALL_ID,
+          companyId: COMPANY_ID,
+          wakePhrase,
+        }),
+      });
+      if (!response.ok) throw new Error(await safeErrorMessage(response));
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setAnalysisMessage("Vesper spoke the latest answer.");
+        restore();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setErrorMessage("Could not play Vesper's audio.");
+        restore();
+      };
+      await audio.play();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not summon Vesper.",
+      );
+      restore();
+    }
+  }, [isSpeaking, scribe]);
+
+  useEffect(() => {
+    const nextSegment = scribe.committedTranscripts.find(
+      (segment) =>
+        segment.isFinal &&
+        segment.text.trim() &&
+        !analyzedTranscriptIds.current.has(segment.id),
+    );
+    if (!nextSegment) return;
+
+    analyzedTranscriptIds.current.add(nextSegment.id);
+    if (detectWakeWord(nextSegment.text).matched) {
+      void summon(nextSegment.text);
+      return;
+    }
+
+    void analyzeTranscript(nextSegment.text);
+  }, [analyzeTranscript, scribe.committedTranscripts, summon]);
 
   const isConnecting = status === "connecting";
   const canStart = status === "disconnected" || status === "error";
@@ -161,6 +287,46 @@ export function VoiceAgent() {
       )}
 
       <Transcript lines={lines} partial={scribe.partialTranscript} />
+
+      {(analysisMessage || question || answer || correction) && (
+        <div className="rounded-md border border-gray-200 p-3 text-sm dark:border-gray-700">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="mr-auto text-gray-600 dark:text-gray-300">
+              {analysisMessage ?? "Live transcript analysis ready."}
+            </p>
+            <button
+              type="button"
+              onClick={() => void summon()}
+              disabled={!answer || isSpeaking}
+              className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+            >
+              {isSpeaking ? "Speaking..." : "Summon latest answer"}
+            </button>
+          </div>
+
+          {question && (
+            <div className="mt-3">
+              <p className="font-semibold">Detected question</p>
+              <p>{question.question}</p>
+            </div>
+          )}
+          {answer && (
+            <div className="mt-3">
+              <p className="font-semibold">Suggested answer</p>
+              <p>{answer.answer}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Confidence: {answer.confidence}
+              </p>
+            </div>
+          )}
+          {correction && (
+            <div className="mt-3">
+              <p className="font-semibold">Private correction</p>
+              <p>{correction.suggestedCorrection}</p>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

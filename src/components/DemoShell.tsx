@@ -6,8 +6,7 @@
 // and the copy here are PLACEHOLDERs. See product.md §6 and the TODO(spec) markers.
 
 import { VoiceAgent } from "@/components/VoiceAgent";
-import { ResultCard } from "@/components/ResultCard";
-import { PLACEHOLDER_RESULT } from "@/lib/fixtures";
+import { TypedTranscriptFallback } from "@/components/TypedTranscriptFallback";
 
 export function DemoShell() {
   return (
@@ -25,9 +24,8 @@ export function DemoShell() {
       {/* Real, idea-agnostic infrastructure — see spec/features/voice-loop.md. */}
       <VoiceAgent />
 
-      {/* TODO(spec): product.md §Core Flow / §Wow moment — drive this from real
-          state produced by the flow instead of static fixtures. */}
-      <ResultCard result={PLACEHOLDER_RESULT} />
+      {/* Demo safety path — typed transcript drives Lane B's call pipeline. */}
+      <TypedTranscriptFallback />
     </main>
   );
 }
