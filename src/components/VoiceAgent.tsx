@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScribe } from "@elevenlabs/react";
 import { fetchScribeToken, synthesizeSpeech } from "@/lib/elevenlabs";
+import { detectWakeWord } from "@/lib/wakeword";
 import { Transcript } from "@/components/Transcript";
 import type {
   AnswerCard,
@@ -88,19 +89,6 @@ export function VoiceAgent() {
       );
     }
   }, []);
-
-  useEffect(() => {
-    const nextSegment = scribe.committedTranscripts.find(
-      (segment) =>
-        segment.isFinal &&
-        segment.text.trim() &&
-        !analyzedTranscriptIds.current.has(segment.id),
-    );
-    if (!nextSegment) return;
-
-    analyzedTranscriptIds.current.add(nextSegment.id);
-    void analyzeTranscript(nextSegment.text);
-  }, [analyzeTranscript, scribe.committedTranscripts]);
 
   const start = useCallback(async () => {
     setErrorMessage(null);
@@ -211,6 +199,24 @@ export function VoiceAgent() {
       restore();
     }
   }, [isSpeaking, scribe]);
+
+  useEffect(() => {
+    const nextSegment = scribe.committedTranscripts.find(
+      (segment) =>
+        segment.isFinal &&
+        segment.text.trim() &&
+        !analyzedTranscriptIds.current.has(segment.id),
+    );
+    if (!nextSegment) return;
+
+    analyzedTranscriptIds.current.add(nextSegment.id);
+    if (detectWakeWord(nextSegment.text).matched) {
+      void summon();
+      return;
+    }
+
+    void analyzeTranscript(nextSegment.text);
+  }, [analyzeTranscript, scribe.committedTranscripts, summon]);
 
   const isConnecting = status === "connecting";
   const canStart = status === "disconnected" || status === "error";
