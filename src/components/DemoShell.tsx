@@ -1,9 +1,9 @@
 // Traces to: spec/product.md §Core Flow — the on-screen demo scaffold.
 //
 // This is the single screen the demo runs on. The voice loop (VoiceAgent) is
-// real and idea-agnostic. Everything tied to the specific product idea — the
-// title, the description, and what ResultCard shows — is a PLACEHOLDER until
-// /spec/product.md is filled in. See the TODO(spec) markers below.
+// real and idea-agnostic (Scribe STT in + TTS out). The product surfaces —
+// knowledge setup, private answer/correction cards — are not built yet; ResultCard
+// and the copy here are PLACEHOLDERs. See product.md §6 and the TODO(spec) markers.
 
 import { VoiceAgent } from "@/components/VoiceAgent";
 import { ResultCard } from "@/components/ResultCard";
@@ -13,12 +13,12 @@ export function DemoShell() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-10">
       <header className="flex flex-col gap-2">
-        {/* TODO(spec): product.md §One-liner — replace the title. */}
-        <h1 className="text-2xl font-bold">Voice Demo</h1>
-        {/* TODO(spec): product.md §Demo user / §Core flow — replace this copy. */}
+        <h1 className="text-2xl font-bold">Vesper</h1>
+        {/* TODO(spec): product.md §1 / §6B — replace with the live call workspace. */}
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Placeholder shell. The voice loop below is real and idea-agnostic.
-          Fill in <code>/spec/product.md</code>, then build the core flow here.
+          A summonable AI expert for live calls. The voice core below is real
+          (Scribe STT + TTS); the call workspace and knowledge surfaces are next —
+          see <code>/spec/product.md</code>.
         </p>
       </header>
 

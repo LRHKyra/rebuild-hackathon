@@ -1,29 +1,31 @@
 // Traces to: spec/features/voice-loop.md + spec/product.md (shared types).
-// Shared, idea-agnostic types used across the voice loop and demo shell.
+// Shared, idea-agnostic types for the voice loop.
 
-// Roles in a conversation. The ElevenLabs SDK reports "user" | "agent".
-export type TranscriptRole = "user" | "agent";
+// Mirrors the @elevenlabs/react Scribe status, plus our own "error" state used to
+// drive the no-voice fallback.
+export type VoiceStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "transcribing"
+  | "error";
 
-// One line of transcript rendered in the UI.
-// `id` is a stable client-side key for React lists.
-export type TranscriptMessage = {
+// One line of transcript rendered in the UI. `isFinal` distinguishes a committed
+// segment from the in-progress (partial) one.
+export type TranscriptLine = {
   id: string;
-  role: TranscriptRole;
   text: string;
+  isFinal: boolean;
 };
 
-// Mirrors the @elevenlabs/react conversation status, which already collapses
-// connection failures into an "error" state we use to drive the no-voice fallback.
-export type VoiceStatus = "disconnected" | "connecting" | "connected" | "error";
-
-// Shape returned by /api/elevenlabs/signed-url on success.
-export type SignedUrlResponse = {
-  signedUrl: string;
+// Shape returned by /api/scribe/token on success.
+export type ScribeTokenResponse = {
+  token: string;
 };
 
 // TODO(spec): product.md §Core Flow — the demo's "result" payload.
-// Placeholder shape until product.md is filled in. Replace fields to match
-// whatever the chosen product idea needs to show the judge.
+// Placeholder shape until the product surfaces are built. Replace fields to match
+// what the live call workspace needs to show (answer cards, etc.).
 export type DemoResult = {
   title: string;
   summary: string;
