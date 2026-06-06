@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import {
   addTranscriptEvent,
+  getCallMemory,
   rememberAnswer,
   rememberCorrection,
   rememberQuestion,
@@ -14,6 +15,8 @@ import { MissingEnvError } from "@/lib/env";
 import { detectContradiction, detectQuestion, generateAnswer } from "@/lib/llm";
 import { retrieve } from "@/lib/retrieval";
 import { getStore } from "@/lib/store";
+import { detectWakeWord } from "@/lib/wakeword";
+import { ensureDemoKnowledge } from "@/lib/fixtures";
 import type {
   AnswerCard,
   CorrectionCard,
@@ -48,9 +51,20 @@ export async function POST(request: Request) {
   const speaker = parseSpeaker(body.speaker);
   addTranscriptEvent({ callId, speaker, text });
 
+  // Seed demo KB on first request if the store is empty.
+  await ensureDemoKnowledge();
+
   try {
     const window = transcriptWindow(callId);
     const response: TranscriptAnalysis = {};
+
+    // Wake word check — any mention of "Vesper" summons the agent.
+    // Return immediately so the client can play audio; skip LLM analysis for this line.
+    if (detectWakeWord(text).matched) {
+      const memory = getCallMemory(callId);
+      const summon = memory.latestAnswer?.canSpeak ? memory.latestAnswer : null;
+      return NextResponse.json({ isWake: true, summon } satisfies TranscriptAnalysis);
+    }
 
     const questionResult = await detectQuestion({
       text,

@@ -13,7 +13,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScribe } from "@elevenlabs/react";
 import { fetchScribeToken, safeErrorMessage, synthesizeSpeech } from "@/lib/elevenlabs";
-import { detectWakeWord } from "@/lib/wakeword";
 import { Transcript } from "@/components/Transcript";
 import type {
   AnswerCard,
@@ -33,6 +32,7 @@ type AnalysisResponse = {
   detectedQuestion?: DetectedQuestion | null;
   answerCard?: AnswerCard | null;
   correctionCard?: CorrectionCard | null;
+  isWake?: boolean;
 };
 
 export function VoiceAgent() {
@@ -63,6 +63,55 @@ export function VoiceAgent() {
     isFinal: segment.isFinal,
   }));
 
+  const summon = useCallback(async (wakePhrase = "Vesper, can you take that one?") => {
+    if (isSpeaking) return;
+
+    setErrorMessage(null);
+    setAnalysisMessage("Summoning Vesper...");
+    setIsSpeaking(true);
+    const wasConnected = scribe.isConnected;
+    if (wasConnected) scribe.mute();
+
+    const restore = () => {
+      if (wasConnected) scribe.unmute();
+      setIsSpeaking(false);
+    };
+
+    try {
+      const response = await fetch("/api/summon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callId: CALL_ID,
+          companyId: COMPANY_ID,
+          wakePhrase,
+        }),
+      });
+      if (!response.ok) throw new Error(await safeErrorMessage(response));
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setAnalysisMessage("Vesper spoke the latest answer.");
+        restore();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setErrorMessage("Could not play Vesper's audio.");
+        restore();
+      };
+      await audio.play();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not summon Vesper.",
+      );
+      restore();
+    }
+  }, [isSpeaking, scribe]);
+
   const analyzeTranscript = useCallback(async (text: string) => {
     setAnalysisMessage("Analyzing live transcript...");
     setErrorMessage(null);
@@ -81,6 +130,13 @@ export function VoiceAgent() {
 
       if (!response.ok) throw new Error(await safeErrorMessage(response));
       const data = (await response.json()) as AnalysisResponse;
+
+      if (data.isWake) {
+        setAnalysisMessage("Vesper summoned...");
+        void summon(text);
+        return;
+      }
+
       if (data.detectedQuestion) setQuestion(data.detectedQuestion);
       if (data.answerCard) setAnswer(data.answerCard);
       if (data.correctionCard) setCorrection(data.correctionCard);
@@ -90,7 +146,7 @@ export function VoiceAgent() {
         error instanceof Error ? error.message : "Could not analyze transcript.",
       );
     }
-  }, []);
+  }, [summon]);
 
   const start = useCallback(async () => {
     setErrorMessage(null);
@@ -161,55 +217,6 @@ export function VoiceAgent() {
     }
   }, [ttsText, isSpeaking, scribe]);
 
-  const summon = useCallback(async (wakePhrase = "Vesper, can you take that one?") => {
-    if (isSpeaking) return;
-
-    setErrorMessage(null);
-    setAnalysisMessage("Summoning Vesper...");
-    setIsSpeaking(true);
-    const wasConnected = scribe.isConnected;
-    if (wasConnected) scribe.mute();
-
-    const restore = () => {
-      if (wasConnected) scribe.unmute();
-      setIsSpeaking(false);
-    };
-
-    try {
-      const response = await fetch("/api/summon", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callId: CALL_ID,
-          companyId: COMPANY_ID,
-          wakePhrase,
-        }),
-      });
-      if (!response.ok) throw new Error(await safeErrorMessage(response));
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setAnalysisMessage("Vesper spoke the latest answer.");
-        restore();
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setErrorMessage("Could not play Vesper's audio.");
-        restore();
-      };
-      await audio.play();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Could not summon Vesper.",
-      );
-      restore();
-    }
-  }, [isSpeaking, scribe]);
-
   useEffect(() => {
     const nextSegment = scribe.committedTranscripts.find(
       (segment) =>
@@ -220,11 +227,6 @@ export function VoiceAgent() {
     if (!nextSegment) return;
 
     analyzedTranscriptIds.current.add(nextSegment.id);
-    if (detectWakeWord(nextSegment.text).matched) {
-      void summon(nextSegment.text);
-      return;
-    }
-
     void analyzeTranscript(nextSegment.text);
   }, [analyzeTranscript, scribe.committedTranscripts, summon]);
 
@@ -296,7 +298,7 @@ export function VoiceAgent() {
             </p>
             <button
               type="button"
-              onClick={summon}
+              onClick={() => void summon()}
               disabled={!answer || isSpeaking}
               className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
             >

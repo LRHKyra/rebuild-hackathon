@@ -92,6 +92,8 @@ export type TranscriptAnalysis = {
   detectedQuestion?: DetectedQuestion | null;
   answerCard?: AnswerCard | null;
   correctionCard?: CorrectionCard | null;
+  isWake?: boolean;          // this line summoned Vesper by name
+  summon?: AnswerCard | null; // on a wake line, the latest speakable answer to voice
 };
 
 // ── Product placeholder (Lane C) ────────────────────────────────────────────
