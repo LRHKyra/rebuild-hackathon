@@ -13,13 +13,16 @@ files.
 
 ---
 
-> **Reconciliation note (Lane A shipped; code = source of truth).** Lane A built
-> past the "stub" stage. As built: `ANTHROPIC_API_KEY` (Claude — Haiku detect/contra,
-> Sonnet answer) + `OPENAI_API_KEY` (embeddings); in-memory cosine store. Lane A also
-> landed **working reference impls of `/api/call/transcript` + `src/lib/wakeword.ts`**
-> (Lane B's territory) — Lane B extends, not builds from scratch. Two contract deltas
-> vs the original: the transcript response gained `isWake`/`summon`, and `/api/summon`
-> is not yet a separate route. Full detail in product.md §13 / §10C.
+> **INTEGRATED (code = source of truth).** Lane A (brain) and Lane B (pipeline +
+> voice) are reconciled on the `integration` branch and proven on real docs via
+> `npm run call-sim --verbose`. As built: `ANTHROPIC_API_KEY` (Claude — Haiku
+> detect/contradiction, Sonnet answer) + `OPENAI_API_KEY` (embeddings); in-memory
+> cosine store. **Built:** `/api/call/transcript` (live whisper analysis +
+> rolling window via `callState.ts`), `/api/summon` (audio), `VoiceAgent` live
+> wiring + typed-transcript fallback, richer `wakeword.ts`. The transcript response
+> gained `isWake`/`summon`/`debug`; `AnswerCard` gained `spokenAnswer`; contradiction
+> is score-gated + `isCheckableClaim`, scoped to top-8 retrieved (not full KB).
+> Full detail in product.md §13 / §10C.
 
 ## The seams (frozen contracts — agree before coding, change only by team consensus)
 
@@ -32,11 +35,11 @@ them first, hour 0, so B and C can import).
   **or** multipart .txt/.md/.pdf upload) ; `GET /api/knowledge?companyId=` → `{ cards }`
 - `POST /api/answer { question, callId?, companyId?, questionId? }` → `AnswerCard`
 - `POST /api/call/transcript { callId, speaker, text, companyId? }`
-  → `{ detectedQuestion?, answerCard?, correctionCard?, isWake?, summon? }`
-  ← **the big seam (B→C)**; shipped as a reference impl, not a stub
-- `POST /api/summon` → **not built yet** (Lane B owns); the speakable answer currently
-  returns as `summon` on the transcript response. `POST /api/tts { text }` → `audio/mpeg`
-  is the built TTS primitive Lane B's summon will use.
+  → `{ detectedQuestion?, answerCard?, correctionCard?, isWake?, summon?, debug? }`
+  ← **the big seam (B→C)**; integrated (not a stub); `?debug=1` adds the debug block
+- `POST /api/summon { callId, companyId?, wakePhrase }` → streams `audio/mpeg` ✅ built
+  (speaks `AnswerCard.spokenAnswer`). `POST /api/tts { text }` → `audio/mpeg` is the
+  underlying TTS primitive.
 - `GET /api/scribe/token` → `{ token }`  (built)
 
 Rule: any route NOT yet implemented returns **mock data in the contract shape** so the
@@ -87,9 +90,8 @@ Covers WS4 (live transcript wiring) + WS5 (wake-word summon) + WS6 orchestration
   only the latest line), tune the wake/question/statement branching.
 - `src/lib/wakeword.ts` — **already exists** (matches "Vesper" anywhere, case-insensitive,
   no diarization). Extend if you want stricter wake-phrase matching.
-- `src/app/api/summon/route.ts` — **NOT built yet; this is your main new route.** The
-  transcript route returns the speakable `AnswerCard` as `summon`; build the audio path:
-  regenerate ad hoc if context moved on, then stream TTS via the built `POST /api/tts`.
+- `src/app/api/summon/route.ts` — ✅ **built.** Wake phrase → uses the prepared answer
+  when current (else regenerates ad hoc) → streams TTS of `AnswerCard.spokenAnswer`.
 - Voice core extensions (`VoiceAgent`, `/api/scribe/token`, `/api/tts` — built)
 - Typed-transcript fallback input (feeds `/api/call/transcript`; `scripts/call-sim.mjs`
   is a working CLI driver you can model the UI fallback on)

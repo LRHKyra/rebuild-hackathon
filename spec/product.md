@@ -204,7 +204,8 @@ type AnswerCard = {
   id: string;
   callId: string;
   questionId: string;
-  answer: string;
+  answer: string;        // rich, scannable panel text (markdown ok)
+  spokenAnswer: string;  // <75-word, no-markdown version for TTS (as built)
   sourceCardIds: string[];
   confidence: "high" | "medium" | "low";
   canSpeak: boolean;
@@ -374,28 +375,33 @@ confidence is high/medium (§10B).
 Request: `{ "question", "callId"?, "companyId"?, "questionId"? }` (`question` required).
 Response: `AnswerCard`.
 
-### POST /api/call/transcript 🟡 (reference impl by Lane A; Lane B owns/extends)
-Adds a transcript line and triggers analysis. Per-line branch:
+### POST /api/call/transcript ✅ (integrated: Lane B pipeline + Lane A brain)
+Adds a transcript line (into per-call state, `src/lib/callState.ts`) and triggers
+analysis with a rolling transcript window. Per-line branch:
 1. **Wake word** (line names "Vesper", §6C) → returns `{ isWake: true, summon }`
-   where `summon` is the latest speakable `AnswerCard` for the call (or `null` if
-   none is ready). Wake state is held in process, keyed by `callId`.
-2. else **a question** → detect → retrieve → grounded `AnswerCard` (or refusal).
-3. else **a statement** → contradiction check vs the **top-8 retrieved** cards (§10C).
+   where `summon` is the latest speakable `AnswerCard` (or `null`). Used by text
+   clients / `call-sim`; the live UI does its own wake detection + `/api/summon`.
+2. else **a question** → detect → retrieve → grounded `AnswerCard` (panel `answer`
+   + `spokenAnswer`), or refusal.
+3. else **a rep/unlabeled statement** → contradiction check, **gated**: only when
+   retrieval finds a relevant card (top score ≥ `CONTRADICTION_SCORE_THRESHOLD`,
+   default 0.3) and the model returns `isCheckableClaim && hasContradiction`.
+   Scoped to the **top-8 retrieved** cards (§10C), never the full KB.
 
 Request: `{ "callId", "speaker": "rep | prospect | unknown", "text", "companyId"? }`
 Response: `TranscriptAnalysis` (§8) =
-`{ detectedQuestion?, answerCard?, correctionCard?, isWake?, summon? }`.
-**Note (boundary):** Lane A shipped this as a working reference implementation, not
-a stub. It calls Claude/OpenAI for real. It does NOT yet wire a rolling 60–90s
-transcript window (passes only the latest line) — that, plus live-Scribe wiring, is
-Lane B's to add.
+`{ detectedQuestion?, answerCard?, correctionCard?, isWake?, summon?, debug? }`.
+Add `?debug=1` (non-prod / `LLM_DEBUG=1`) to attach a `debug` block (detected
+question, retrieved cards + scores, raw answer incl. spokenAnswer + raw-vs-final
+canSpeak, contradiction verdict, gating) — surfaced by `call-sim --verbose`.
 
-### POST /api/summon ⛔ NOT YET BUILT (Lane B owns)
-Was specified to stream `audio/mpeg`. As built, **no separate `/api/summon` route
-exists** — the speakable answer is surfaced via the transcript route's `summon`
-field (option 1 above). Lane B still owns building the audio path: take that
-`AnswerCard.answer`, regenerate ad hoc if context moved on, and stream TTS
-(`POST /api/tts` already converts a string → `audio/mpeg`).
+### POST /api/summon ✅ (built — Lane B)
+Wake phrase in → spoken audio out. Uses the prepared answer when current (fast
+path: no extra LLM round-trip), else regenerates ad hoc, then streams `audio/mpeg`
+via `textToSpeech.convert`. Speaks `AnswerCard.spokenAnswer` (concise, markdown-free)
+and returns `X-Vesper-Spoken-Text` + `X-Vesper-Source-Card-Ids` headers.
+Request: `{ "callId", "companyId"?, "wakePhrase" }`. Refuses (`canSpeak:false`) when
+no grounded answer is available.
 
 ### POST /api/scribe/token ✅ (built — voice core)
 Mints a short-lived single-use Scribe realtime token for the browser. Never
