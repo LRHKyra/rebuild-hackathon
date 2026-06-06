@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScribe } from "@elevenlabs/react";
-import { fetchScribeToken, synthesizeSpeech } from "@/lib/elevenlabs";
+import { fetchScribeToken, safeErrorMessage, synthesizeSpeech } from "@/lib/elevenlabs";
 import { detectWakeWord } from "@/lib/wakeword";
 import { Transcript } from "@/components/Transcript";
 import type {
@@ -161,7 +161,7 @@ export function VoiceAgent() {
     }
   }, [ttsText, isSpeaking, scribe]);
 
-  const summon = useCallback(async () => {
+  const summon = useCallback(async (wakePhrase = "Vesper, can you take that one?") => {
     if (isSpeaking) return;
 
     setErrorMessage(null);
@@ -182,7 +182,7 @@ export function VoiceAgent() {
         body: JSON.stringify({
           callId: CALL_ID,
           companyId: COMPANY_ID,
-          wakePhrase: "Vesper, can you take that one?",
+          wakePhrase,
         }),
       });
       if (!response.ok) throw new Error(await safeErrorMessage(response));
@@ -221,7 +221,7 @@ export function VoiceAgent() {
 
     analyzedTranscriptIds.current.add(nextSegment.id);
     if (detectWakeWord(nextSegment.text).matched) {
-      void summon();
+      void summon(nextSegment.text);
       return;
     }
 
@@ -356,14 +356,4 @@ function StatusBadge({
       {label}
     </span>
   );
-}
-
-async function safeErrorMessage(response: Response): Promise<string> {
-  try {
-    const data = (await response.json()) as { error?: string };
-    if (data?.error) return data.error;
-  } catch {
-    // Fall through to the status fallback.
-  }
-  return `Request failed with status ${response.status}.`;
 }

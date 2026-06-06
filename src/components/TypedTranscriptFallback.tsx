@@ -5,6 +5,7 @@
 // This is the demo safety path: typed transcript in, Vesper analysis out.
 
 import { useCallback, useMemo, useState } from "react";
+import { safeErrorMessage } from "@/lib/elevenlabs";
 import type { AnswerCard, CorrectionCard, DetectedQuestion, Speaker } from "@/types";
 
 type TranscriptRow = {
@@ -341,14 +342,4 @@ function PanelCard({
       {children}
     </article>
   );
-}
-
-async function safeErrorMessage(response: Response): Promise<string> {
-  try {
-    const data = (await response.json()) as { error?: string };
-    if (data?.error) return data.error;
-  } catch {
-    // Fall through to the status fallback.
-  }
-  return `Request failed with status ${response.status}.`;
 }

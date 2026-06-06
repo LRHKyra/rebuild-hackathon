@@ -182,8 +182,7 @@ async function answerForSummon(params: {
 }
 
 function toSpokenAnswer(answer: string): string {
-  const words = answer.trim().split(/\s+/).filter(Boolean);
-  return words.slice(0, 60).join(" ");
+  return answer.trim();
 }
 
 async function streamToArrayBuffer(

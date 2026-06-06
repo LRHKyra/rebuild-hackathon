@@ -185,7 +185,7 @@ function looksLikeFactStatement(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     !/[?？]\s*$/.test(text) &&
-    /\b(we|our|it|this|that|scim|sso|hipaa|soc|salesforce|hubspot|workday|implementation|retention|on-prem|enterprise)\b/.test(
+    /\b(scim|sso|hipaa|soc|salesforce|hubspot|workday|implementation|retention|on-prem|enterprise|saml|oauth|gdpr|api|pricing|availability|support|tier|contract|deployment)\b/.test(
       lower,
     )
   );

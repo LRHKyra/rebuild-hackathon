@@ -52,7 +52,7 @@ export async function synthesizeSpeech(text: string): Promise<Blob> {
 }
 
 // Best-effort extraction of an { error } message; falls back to a status string.
-async function safeErrorMessage(response: Response): Promise<string> {
+export async function safeErrorMessage(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { error?: string };
     if (data?.error) return data.error;
