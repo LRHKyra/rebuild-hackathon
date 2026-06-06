@@ -69,14 +69,14 @@ export function VesperApp() {
       <header className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{agentName}</h1>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
+            <h1 className="text-2xl font-medium text-ink">{agentName}</h1>
+            <p className="text-sm text-ink-soft">
               A summonable AI expert for live calls — listens silently, helps
               privately, speaks only when called by name.
             </p>
           </div>
         </div>
-        <nav className="flex gap-1 rounded-lg border border-gray-200 p-1 text-sm dark:border-gray-700">
+        <nav className="flex gap-1 rounded-lg border border-hairline bg-panel p-1 text-sm">
           <TabButton active={tab === "knowledge"} onClick={() => setTab("knowledge")}>
             Knowledge
           </TabButton>
@@ -103,11 +103,11 @@ export function VesperApp() {
           {/* The real, idea-agnostic voice core (Scribe STT + TTS). Lane B fully
               wires live STT into the workspace; exposed here so the mic loop is
               reachable from the product UI. */}
-          <section className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+          <section className="rounded-xl border border-hairline bg-panel p-3">
             <button
               type="button"
               onClick={() => setShowVoiceCore((v) => !v)}
-              className="text-xs font-semibold tracking-wide text-gray-500 uppercase"
+              className="text-[11px] font-medium tracking-wide text-ink-muted"
             >
               {showVoiceCore ? "▾" : "▸"} Live voice core (mic + TTS)
             </button>
@@ -138,8 +138,8 @@ function TabButton({
       onClick={onClick}
       className={`flex-1 rounded-md px-3 py-1.5 font-medium ${
         active
-          ? "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900"
-          : "text-gray-600 dark:text-gray-300"
+          ? "bg-ink text-panel"
+          : "text-ink-soft hover:text-ink"
       }`}
     >
       {children}

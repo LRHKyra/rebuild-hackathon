@@ -148,9 +148,9 @@ export function DemoRunnerBar({
 }) {
   const { sceneIndex, currentScene, atEnd, advanceScene, resetDemo } = session;
   return (
-    <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-800 dark:bg-indigo-950/40">
+    <section className="rounded-xl border border-hairline bg-panel p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-semibold tracking-wide text-indigo-700 uppercase dark:text-indigo-300">
+        <span className="text-xs font-medium tracking-wide text-ink-muted">
           Demo runner · {companyName}
         </span>
         <div className="flex items-center gap-2">
@@ -158,14 +158,14 @@ export function DemoRunnerBar({
             type="button"
             onClick={() => void advanceScene()}
             disabled={atEnd}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            className="rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-panel disabled:opacity-40"
           >
             {sceneIndex < 0 ? "Start demo" : atEnd ? "End" : "Next scene →"}
           </button>
           <button
             type="button"
             onClick={resetDemo}
-            className="rounded-md border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 dark:border-indigo-700 dark:text-indigo-300"
+            className="rounded-md border border-hairline px-3 py-1.5 text-xs font-medium text-ink-soft hover:text-ink"
           >
             Reset
           </button>
@@ -173,10 +173,10 @@ export function DemoRunnerBar({
       </div>
       {currentScene && (
         <div className="mt-2">
-          <p className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">
+          <p className="text-xs font-medium text-ink">
             {currentScene.title}
           </p>
-          <p className="mt-0.5 text-xs text-indigo-700/90 dark:text-indigo-300/90">
+          <p className="mt-0.5 text-xs text-ink-soft">
             {currentScene.narration}
           </p>
         </div>
