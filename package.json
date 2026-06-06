@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check-keys": "node --env-file=.env.local scripts/check-keys.mjs",
     "call-sim": "node scripts/call-sim.mjs"
   },
   "dependencies": {
