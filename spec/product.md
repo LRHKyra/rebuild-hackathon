@@ -30,7 +30,7 @@ knowledge, then spoken live via TTS. Nothing is canned or pre-scripted.
 ### Build
 
 - Web app with a live call workspace
-- Knowledge base upload/admin screen (real ingestion + chunking)
+- Knowledge base upload/admin screen (real ingestion + chunking; paste / .txt / .md / .pdf)
 - Realtime transcript view (ElevenLabs Scribe STT)
 - Private rep copilot panel
 - Embeddings + vector retrieval over uploaded knowledge
@@ -48,7 +48,9 @@ knowledge, then spoken live via TTS. Nothing is canned or pre-scripted.
 - Calendar integration
 - Multi-company admin
 - Complex eval suite
-- Production-grade document parsing (paste / .txt / .md only; PDF best-effort/P2)
+- Production-grade / scanned-PDF parsing. (As built: best-effort text extraction
+  from .txt / .md / .pdf via `unpdf` — PDF was promoted from P2 to shipped. Complex
+  layout, tables, and OCR remain out of scope.)
 - Speaker diarization (gating is by wake word, not by who speaks)
 
 ## 4. Primary User
@@ -144,13 +146,22 @@ Backend (Next.js route handlers only):
 - Eval checks (grounding, confidence, contradiction)
 - Scribe realtime token minting; ElevenLabs TTS
 
-Storage:
-- A datastore + vector store (e.g. SQLite + sqlite-vec, or Supabase/pgvector, or a
-  local vector index). Prefer the simplest that supports real embeddings retrieval.
+Storage (as built):
+- In-memory vector store: a `KnowledgeCard[]` searched by brute-force cosine
+  similarity, behind a swappable `KnowledgeStore` interface (`src/lib/store.ts`),
+  as a module-level singleton per server instance. Simplest real RAG at demo scale
+  (~10–30 cards) and works on Vercel. NOT persistent: cards live only for the life
+  of the server process and must be (re)ingested after each restart/deploy. The
+  `KnowledgeStore` interface is the drop-in seam for Supabase/pgvector if shared,
+  persistent uploads are ever needed.
 
-AI / Voice:
-- LLM for question detection, answer generation, contradiction detection
-- Embeddings for retrieval
+AI / Voice (as built):
+- LLM = Claude via `@anthropic-ai/sdk`, model-routed: Haiku 4.5
+  (`claude-haiku-4-5`) for question detection + contradiction; Sonnet 4.6
+  (`claude-sonnet-4-6`) for the grounded answer. All three use a forced single-tool
+  call for guaranteed structured JSON, with prompt caching on the system block.
+- Embeddings = OpenAI `text-embedding-3-small` via the `openai` SDK (Anthropic
+  ships no embeddings API). Keys: `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`.
 - ElevenLabs **Scribe realtime STT** for the live transcript (`useScribe`,
   `scribe_v2_realtime` over WebSocket; client connects with a server-minted
   single-use token)
@@ -182,6 +193,7 @@ type DetectedQuestion = {
   speaker: "prospect" | "rep" | "unknown";
   transcriptWindow: string;
   status: "new" | "answered" | "ignored";
+  category?: QuestionCategory; // as built: carried through from the §12 detector
   createdAt: string;
 };
 ```
@@ -214,14 +226,40 @@ type CorrectionCard = {
 };
 ```
 
+### RetrievedCard (as built — exported from `src/types.ts`)
+A knowledge card paired with its retrieval similarity score. The internal output
+of retrieval; the route maps `.card` into answer/contradiction generation.
+```ts
+type RetrievedCard = { card: KnowledgeCard; score: number };
+```
+
+### TranscriptAnalysis (as built — response of POST /api/call/transcript)
+The big seam Lane B → Lane C. Extended beyond the original §13 shape with two
+wake-word fields (see §6C / §13).
+```ts
+type TranscriptAnalysis = {
+  detectedQuestion?: DetectedQuestion | null;
+  answerCard?: AnswerCard | null;
+  correctionCard?: CorrectionCard | null;
+  isWake?: boolean;            // this line summoned Vesper by name
+  summon?: AnswerCard | null;  // on a wake line, the latest speakable answer to voice
+};
+```
+
 ## 9. Retrieval Contract
 
-Input: current detected question, last 60–90s of transcript, company/product id.
+Input: current detected question, company/product id. (Original spec also fed the
+last 60–90s of transcript; the as-built reference orchestration passes only the
+detected question to retrieval/detection — wiring the rolling transcript window is
+a Lane B orchestration item, see §13.)
 
-Process:
-1. Embed the query; vector-search knowledge cards.
-2. Return top 3–5 cards (keyword search as fallback if embeddings unavailable).
-3. Pass only those cards into answer generation.
+Process (as built):
+1. Embed the query with OpenAI `text-embedding-3-small`; cosine-search the store.
+2. Return top-K `RetrievedCard`s (default K=5; the transcript route uses K=8 for
+   the contradiction check). **No keyword fallback** — retrieval is embeddings-only;
+   if embeddings are unavailable the request fails rather than degrading. (The
+   original "keyword search as fallback" was not built.)
+3. Pass only those cards into answer / contradiction generation.
 4. Require the answer to cite source card ids.
 
 Hackathon rule: reliable retrieval over fragile retrieval — but build it for real
@@ -241,9 +279,20 @@ clearly answered. Only high/medium answers may be spoken. (Ensure scripted
 supported demo questions reliably score high so the summon never dies on stage.)
 
 ### C. Contradiction Check
-Compare rep statements against product facts. Run against the full KB at demo
-scale (not a narrow retrieved subset) so clear contradictions always surface.
-Flag only clear contradictions.
+Compare rep statements against product facts. Flag only clear contradictions.
+
+**Changed from spec (as built):** the original rule was "run against the full KB
+(not a retrieved subset)." The reference orchestration in `/api/call/transcript`
+instead runs `detectContradiction()` against the **top-8 retrieved cards** for the
+statement, because passing the entire KB overflows the model's context at real
+corpus scale (a single 140-page PDF is ~200k tokens). The `detectContradiction()`
+library function itself is scope-agnostic — it checks against whatever cards it is
+given — so a caller with a small KB may still pass everything.
+
+**Cross-lane consequence:** a contradiction is only caught if the card that
+establishes the fact ranks in the top-8 for the rep's statement. At demo scale
+(≤30 cards) the relevant card reliably ranks; for the scripted demo, Lane B/C must
+ensure the SCIM correction surfaces for the SCIM misstatement.
 
 Example — rep says "SCIM is fully live"; docs say "SCIM is in private beta" →
 private warning: "Careful: SCIM is in private beta, not generally available."
@@ -299,32 +348,56 @@ Output: plain spoken response under 75 words.
 
 ## 13. API Contracts
 
-### POST /api/knowledge
-Creates + embeds knowledge cards from uploaded/pasted content.
-Request: `{ "companyId", "title", "source", "text" }`
-Response: `{ "cardsCreated": number, "cards": [] }`
+> **Status legend (as built):** ✅ implemented by Lane A · 🟡 reference impl by
+> Lane A, Lane B owns/extends · ⛔ not yet built (Lane B owns).
+> All `companyId` defaults to `"demo-company"`, `callId` to `"demo-call"` when omitted.
 
-### GET /api/knowledge
-Returns knowledge cards.
+### POST /api/knowledge ✅
+Creates + embeds knowledge cards from uploaded/pasted content. **Two request paths:**
+- **JSON paste:** `{ text, title?, source?, companyId?, topicTags?: string[] }`
+  (`text` required; `title` defaults to "Untitled", `source` defaults to `title`).
+- **Multipart upload:** `multipart/form-data` with a `file` field (`.txt` / `.md`
+  / `.pdf`; PDF text via `unpdf`) plus optional `companyId` / `title` / `source`.
 
-### POST /api/call/transcript
-Adds a transcript event and triggers analysis. Pipeline: detect → (only if
-question) retrieve + generate answer; run contradiction on statements asserting a
-product fact.
-Request: `{ "callId", "speaker": "rep | prospect | unknown", "text" }`
-Response: `{ "detectedQuestion": {}, "answerCard": {}, "correctionCard": {} }`
+Pipeline: chunk (≈800 char target, 1200 max, paragraph-packed) → embed → store.
+Response: `{ "cardsCreated": number, "cards": KnowledgeCard[] }`.
+**`cards` never include the `embedding` field** (stripped server-side).
 
-### POST /api/answer
-Generates a grounded ad-hoc answer for a question.
+### GET /api/knowledge ✅
+Returns knowledge cards for a company. Query: `?companyId=` (default `demo-company`).
+Response: `{ "cards": KnowledgeCard[] }` (embeddings stripped).
 
-### POST /api/summon
-Generates the spoken answer ad hoc (or uses the just-generated, still-current one)
-and returns synthesized audio. Streams `audio/mpeg` (no hosted `audioUrl`).
-Request: `{ "callId", "wakePhrase" }`
-Response: audio stream; metadata (spokenText, sourceCardIds) via headers or a
-companion JSON field.
+### POST /api/answer ✅
+Generates a grounded, ad-hoc `AnswerCard`: retrieve top cards → answer only from
+them → refuse (§10A) if none relevant. `canSpeak` is forced false unless
+confidence is high/medium (§10B).
+Request: `{ "question", "callId"?, "companyId"?, "questionId"? }` (`question` required).
+Response: `AnswerCard`.
 
-### POST /api/scribe/token
+### POST /api/call/transcript 🟡 (reference impl by Lane A; Lane B owns/extends)
+Adds a transcript line and triggers analysis. Per-line branch:
+1. **Wake word** (line names "Vesper", §6C) → returns `{ isWake: true, summon }`
+   where `summon` is the latest speakable `AnswerCard` for the call (or `null` if
+   none is ready). Wake state is held in process, keyed by `callId`.
+2. else **a question** → detect → retrieve → grounded `AnswerCard` (or refusal).
+3. else **a statement** → contradiction check vs the **top-8 retrieved** cards (§10C).
+
+Request: `{ "callId", "speaker": "rep | prospect | unknown", "text", "companyId"? }`
+Response: `TranscriptAnalysis` (§8) =
+`{ detectedQuestion?, answerCard?, correctionCard?, isWake?, summon? }`.
+**Note (boundary):** Lane A shipped this as a working reference implementation, not
+a stub. It calls Claude/OpenAI for real. It does NOT yet wire a rolling 60–90s
+transcript window (passes only the latest line) — that, plus live-Scribe wiring, is
+Lane B's to add.
+
+### POST /api/summon ⛔ NOT YET BUILT (Lane B owns)
+Was specified to stream `audio/mpeg`. As built, **no separate `/api/summon` route
+exists** — the speakable answer is surfaced via the transcript route's `summon`
+field (option 1 above). Lane B still owns building the audio path: take that
+`AnswerCard.answer`, regenerate ad hoc if context moved on, and stream TTS
+(`POST /api/tts` already converts a string → `audio/mpeg`).
+
+### POST /api/scribe/token ✅ (built — voice core)
 Mints a short-lived single-use Scribe realtime token for the browser. Never
 returns the API key.
 
@@ -393,8 +466,9 @@ question detection; grounded ad-hoc answer card; wake-word summon; ElevenLabs
 spoken response; typed-input demo fallback.
 **P1:** contradiction detection; confidence display; better source UI; scripted
 demo runner.
-**P2:** PDF ingestion; multi-agent roles; call recording; CRM follow-up summary;
-real meeting integrations.
+**P2:** multi-agent roles; call recording; CRM follow-up summary; real meeting
+integrations. (PDF ingestion was pulled forward from P2 and is shipped — best-effort
+text extraction via `unpdf`.)
 
 ## 18. Definition of Done
 
