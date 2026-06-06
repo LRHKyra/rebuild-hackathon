@@ -11,7 +11,8 @@ import type { KnowledgeCard } from "@/types";
 import { DEFAULT_AGENT_NAME, MOCK_KNOWLEDGE_CARDS } from "@/lib/fixtures";
 import { listKnowledge } from "@/lib/vesper-client";
 import { KnowledgePage } from "@/components/KnowledgePage";
-import { CallWorkspace, DemoRunnerBar } from "@/components/CallWorkspace";
+import { DemoRunnerBar } from "@/components/CallWorkspace";
+import { AdvisorWorkspace } from "@/components/AdvisorWorkspace";
 import { useCallSession } from "@/components/useCallSession";
 import { VoiceAgent } from "@/components/VoiceAgent";
 
@@ -97,11 +98,7 @@ export function VesperApp() {
         />
       ) : (
         <div className="flex flex-col gap-4">
-          <CallWorkspace
-            agentName={agentName}
-            session={session}
-            knowledgeCards={knowledgeForWorkspace}
-          />
+          <AdvisorWorkspace knowledgeCards={knowledgeForWorkspace} />
 
           {/* The real, idea-agnostic voice core (Scribe STT + TTS). Lane B fully
               wires live STT into the workspace; exposed here so the mic loop is
