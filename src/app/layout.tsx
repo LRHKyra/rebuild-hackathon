@@ -12,11 +12,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// TODO(spec): product.md §One-liner — set the real title/description once the
-// product idea is chosen. Placeholder until then.
+// Traces to: spec/product.md §1 (product thesis).
 export const metadata: Metadata = {
-  title: "Voice Demo — Hackathon",
-  description: "ElevenLabs voice-loop demo. See /spec/product.md for the product idea.",
+  title: "Vesper — a summonable AI expert for live calls",
+  description:
+    "Vesper listens silently, helps a sales rep privately, and speaks a grounded answer aloud only when called by name.",
 };
 
 export default function RootLayout({

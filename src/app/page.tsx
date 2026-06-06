@@ -1,7 +1,8 @@
-// Traces to: spec/product.md §Core Flow — the home route renders the demo shell.
+// Traces to: spec/product.md §6 (product surfaces) — the home route renders the
+// Vesper app (Knowledge setup + live Call workspace). Lane C.
 
-import { DemoShell } from "@/components/DemoShell";
+import { VesperApp } from "@/components/VesperApp";
 
 export default function Home() {
-  return <DemoShell />;
+  return <VesperApp />;
 }
