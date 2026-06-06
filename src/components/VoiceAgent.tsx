@@ -7,7 +7,8 @@
 //
 // This deliberately does NOT use Conversational AI. Verified against installed
 // @elevenlabs/react useScribe: { status, isConnected, partialTranscript,
-// committedTranscripts, error, connect({token}), disconnect, mute, unmute }.
+// committedTranscripts, error, connect({ token, modelId, microphone }),
+// disconnect, mute, unmute }.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScribe } from "@elevenlabs/react";
@@ -24,6 +25,7 @@ import type {
 
 const SAMPLE_TTS_TEXT =
   "Hello, this is Vesper. The voice loop is working end to end.";
+const SCRIBE_MODEL_ID = "scribe_v2_realtime";
 const CALL_ID = "demo-call";
 const COMPANY_ID = "demo-company";
 
@@ -95,7 +97,15 @@ export function VoiceAgent() {
     try {
       const token = await fetchScribeToken();
       // connect() requests mic permission and opens the Scribe WebSocket.
-      await scribe.connect({ token });
+      await scribe.connect({
+        token,
+        modelId: SCRIBE_MODEL_ID,
+        microphone: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Could not start transcription.",
