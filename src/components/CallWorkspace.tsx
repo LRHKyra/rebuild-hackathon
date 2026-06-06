@@ -60,14 +60,14 @@ export function CallWorkspace({
     <div className="flex flex-col gap-4">
       {/* Transcript + panel */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <section className="flex min-h-[18rem] flex-col rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-gray-700 uppercase dark:text-gray-300">
+        <section className="flex min-h-[18rem] flex-col rounded-xl border border-hairline bg-panel p-3">
+          <h2 className="mb-2 text-sm font-medium tracking-wide text-ink-muted">
             Call transcript
           </h2>
           <CallTranscript lines={lines} agentName={agentName} />
         </section>
 
-        <section className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950/40">
+        <section className="rounded-xl border border-hairline bg-panel p-3">
           <PrivatePanel
             agentName={agentName}
             question={question}
@@ -84,16 +84,16 @@ export function CallWorkspace({
       {error && (
         <p
           role="alert"
-          className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+          className="rounded-md border border-warn-border bg-warn-soft px-3 py-2 text-xs text-warn"
         >
           {error}
         </p>
       )}
 
       {/* Typed fallback controls */}
-      <section className="flex flex-col gap-2 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+      <section className="flex flex-col gap-2 rounded-xl border border-hairline bg-panel p-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+          <span className="text-xs font-medium tracking-wide text-ink-muted">
             Typed input (demo fallback)
           </span>
           <ModeToggle mode={mode} onChange={setMode} />
@@ -102,7 +102,7 @@ export function CallWorkspace({
           <select
             value={typedSpeaker}
             onChange={(e) => setTypedSpeaker(e.target.value as "prospect" | "rep")}
-            className="rounded-md border border-gray-300 px-2 py-2 text-sm dark:border-gray-600 dark:bg-gray-900"
+            className="rounded-md border border-hairline bg-panel px-2 py-2 text-sm text-ink"
           >
             <option value="prospect">Prospect</option>
             <option value="rep">Rep</option>
@@ -115,18 +115,18 @@ export function CallWorkspace({
               if (e.key === "Enter") void submitTyped();
             }}
             placeholder={`Type a line… (try "${agentName}, can you take that one?")`}
-            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900"
+            className="flex-1 rounded-md border border-hairline bg-panel px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent-border focus:outline-none"
           />
           <button
             type="button"
             onClick={() => void submitTyped()}
             disabled={!typed.trim()}
-            className="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-gray-200 dark:text-gray-900"
+            className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-panel disabled:opacity-40"
           >
             Add line
           </button>
         </div>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-ink-muted">
           {mode === "mock"
             ? "Mock mode: the demo runner drives the rehearsed flow with no backend. Summon still uses real ElevenLabs voice if configured."
             : "Live mode: prospect questions hit the real retrieval + answer pipeline. Saying the agent's name summons a spoken answer."}
@@ -194,7 +194,7 @@ function CallTranscript({
 }) {
   if (lines.length === 0) {
     return (
-      <p className="text-sm text-gray-500 italic">
+      <p className="text-sm text-ink-muted italic">
         The conversation appears here. Run the demo or type a line to begin.
       </p>
     );
@@ -206,19 +206,19 @@ function CallTranscript({
     vesper: agentName,
   };
   const color: Record<CallSpeaker, string> = {
-    prospect: "text-blue-600 dark:text-blue-400",
-    rep: "text-gray-700 dark:text-gray-300",
-    unknown: "text-gray-500",
-    vesper: "text-indigo-600 dark:text-indigo-400",
+    prospect: "text-accent",
+    rep: "text-ink-soft",
+    unknown: "text-ink-muted",
+    vesper: "text-ink",
   };
   return (
     <ul className="flex flex-1 flex-col gap-2 overflow-y-auto text-sm" aria-live="polite">
       {lines.map((line) => (
         <li key={line.id}>
-          <span className={`font-semibold ${color[line.speaker]}`}>
+          <span className={`font-medium ${color[line.speaker]}`}>
             {label[line.speaker]}:
           </span>{" "}
-          <span className="text-gray-900 dark:text-gray-100">{line.text}</span>
+          <span className="text-ink">{line.text}</span>
         </li>
       ))}
     </ul>
@@ -233,7 +233,7 @@ function ModeToggle({
   onChange: (m: Mode) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs dark:border-gray-600">
+    <div className="flex items-center gap-1 rounded-md border border-hairline p-0.5 text-xs">
       {(["mock", "live"] as const).map((m) => (
         <button
           key={m}
@@ -241,8 +241,8 @@ function ModeToggle({
           onClick={() => onChange(m)}
           className={`rounded px-2 py-1 font-medium capitalize ${
             mode === m
-              ? "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900"
-              : "text-gray-500"
+              ? "bg-ink text-panel"
+              : "text-ink-muted"
           }`}
         >
           {m}

@@ -3,6 +3,7 @@
 // render the six panel elements — detected question, suggested answer, sources,
 // confidence, correction warning, and "ready to answer if summoned". This panel is
 // PRIVATE to the rep; nothing here is spoken unless the rep summons Vesper.
+// Styled on the shared light palette tokens (globals.css / vesper-workspace-ui-spec §11).
 
 import type {
   AnswerCard,
@@ -44,14 +45,14 @@ export function PrivatePanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" aria-hidden />
-        <h2 className="text-sm font-semibold tracking-wide text-gray-700 uppercase dark:text-gray-300">
+        <span className="inline-block h-2 w-2 rounded-full bg-accent" aria-hidden />
+        <h2 className="text-sm font-medium tracking-wide text-ink-muted">
           {agentName} — private panel
         </h2>
       </div>
 
       {empty && (
-        <p className="rounded-lg border border-dashed border-gray-300 px-3 py-6 text-center text-sm text-gray-500 dark:border-gray-700">
+        <p className="rounded-lg border border-dashed border-hairline px-3 py-6 text-center text-sm text-ink-muted">
           Listening silently. Detected questions, suggested answers, and private
           warnings appear here — {agentName} only speaks when summoned by name.
         </p>
@@ -81,12 +82,12 @@ export function PrivatePanel({
 
 function DetectedQuestionCard({ question }: { question: DetectedQuestion }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+    <section className="rounded-lg border border-hairline bg-panel p-3">
       <CardLabel>Detected question</CardLabel>
-      <p className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">
+      <p className="mt-1 text-sm font-medium text-ink">
         “{question.question}”
       </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
         <span className="capitalize">{question.speaker}</span>
         {question.category && (
           <>
@@ -120,13 +121,13 @@ function SuggestedAnswerCard({
   const refused = answer.sourceCardIds.length === 0 || answer.confidence === "low";
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+    <section className="rounded-lg border border-hairline bg-panel p-3">
       <div className="flex items-center justify-between">
         <CardLabel>Suggested answer</CardLabel>
         <ConfidenceBadge confidence={answer.confidence} />
       </div>
 
-      <p className="mt-1 text-sm text-gray-900 dark:text-gray-100">
+      <p className="mt-1 text-sm text-ink">
         {answer.answer}
       </p>
 
@@ -138,11 +139,11 @@ function SuggestedAnswerCard({
             {sources.map((c) => (
               <li
                 key={c.id}
-                className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300"
+                className="flex items-center gap-1.5 text-xs text-ink-soft"
               >
                 <span aria-hidden>📄</span>
                 <span className="font-medium">{c.title}</span>
-                <span className="text-gray-400">· {c.source}</span>
+                <span className="text-ink-muted">· {c.source}</span>
               </li>
             ))}
           </ul>
@@ -150,27 +151,27 @@ function SuggestedAnswerCard({
       )}
 
       {/* "Ready to answer if summoned" (§6B) / answered state. */}
-      <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+      <div className="mt-3 border-t border-hairline pt-3">
         {spoken ? (
-          <p className="flex items-center gap-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <p className="flex items-center gap-2 text-xs font-medium text-accent">
             <span aria-hidden>🔊</span> Answered aloud by {agentName}.
           </p>
         ) : answer.canSpeak ? (
           <div className="flex items-center justify-between gap-3">
-            <p className="flex items-center gap-2 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+            <p className="flex items-center gap-2 text-xs font-medium text-accent">
               <span aria-hidden>✋</span> Ready to answer if summoned.
             </p>
             <button
               type="button"
               onClick={onSummon}
               disabled={summoning}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+              className="rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-panel disabled:opacity-40"
             >
               {summoning ? "Speaking…" : `Summon ${agentName}`}
             </button>
           </div>
         ) : (
-          <p className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+          <p className="flex items-center gap-2 text-xs text-warn">
             <span aria-hidden>🤐</span>
             {refused
               ? `Not confirmed in the knowledge base — ${agentName} would not guess aloud.`
@@ -194,22 +195,22 @@ function CorrectionWarning({
     .filter((c): c is SourceCard => Boolean(c));
 
   return (
-    <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950">
+    <section className="rounded-lg border border-warn-border bg-warn-soft p-3">
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-amber-800 uppercase dark:text-amber-300">
+        <span className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-warn">
           <span aria-hidden>⚠️</span> Careful — private correction
         </span>
         <SeverityBadge severity={correction.severity} />
       </div>
-      <p className="mt-2 text-sm text-amber-900 dark:text-amber-100">
+      <p className="mt-2 text-sm text-ink">
         {correction.issue}
       </p>
-      <p className="mt-2 text-sm text-amber-900 dark:text-amber-100">
-        <span className="font-semibold">Suggested correction: </span>
+      <p className="mt-2 text-sm text-ink">
+        <span className="font-medium">Suggested correction: </span>
         {correction.suggestedCorrection}
       </p>
       {sources.length > 0 && (
-        <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+        <p className="mt-2 text-xs text-warn">
           Source: {sources.map((c) => c.title).join(", ")}
         </p>
       )}
@@ -219,7 +220,7 @@ function CorrectionWarning({
 
 function CardLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-xs font-semibold tracking-wide text-gray-400 uppercase">
+    <span className="text-xs font-medium tracking-wide text-ink-muted">
       {children}
     </span>
   );
@@ -227,9 +228,9 @@ function CardLabel({ children }: { children: React.ReactNode }) {
 
 function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
   const styles: Record<Confidence, string> = {
-    high: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-    medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-    low: "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
+    high: "bg-accent-soft text-accent",
+    medium: "bg-warn-soft text-warn",
+    low: "border border-hairline text-ink-muted",
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[confidence]}`}>
@@ -240,9 +241,9 @@ function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
 
 function SeverityBadge({ severity }: { severity: Severity }) {
   const styles: Record<Severity, string> = {
-    high: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-    medium: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
-    low: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+    high: "border border-warn-border bg-warn-soft text-warn",
+    medium: "bg-warn-soft text-warn",
+    low: "border border-hairline text-ink-muted",
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[severity]}`}>
