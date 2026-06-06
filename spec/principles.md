@@ -29,7 +29,7 @@ principles ever conflict with the spec, the spec wins and this file is updated.
 
 ## Secrets
 - All keys are server-side only, never sent to the client: `ELEVENLABS_API_KEY`,
-  `LLM_API_KEY`, and any datastore/vector credentials.
+  `ELEVENLABS_VOICE_ID`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`.
 - The browser only ever receives short-lived, single-use tokens minted by our
   server routes (e.g. the Scribe realtime token) — never a raw key.
 - Validate env at request time inside the route, not at import/build time, so
@@ -55,5 +55,5 @@ principles ever conflict with the spec, the spec wins and this file is updated.
 - Spec supersedes principles: overwrite this file when it conflicts with the spec. — the spec is what we actually agreed to build.
 - Voice loop = Scribe STT + on-demand TTS, not Conversational AI. — answers must pass our grounding/refusal pipeline; an autonomous agent can't be gated.
 - Real knowledge management (embeddings + vector retrieval + citations), not prompt-stuffing. — retrieval quality is the product's credibility.
-- Added LLM provider dependency + `LLM_API_KEY` (server-side). — detection/answering/contradiction need an LLM beyond ElevenLabs.
-- Datastore + vector store permitted (replaces the old "no database" rule). — knowledge management needs persistence + embeddings.
+- Added LLM dependency: Claude via `ANTHROPIC_API_KEY` (Haiku 4.5 for detection/contradiction, Sonnet 4.6 for answering) + OpenAI `OPENAI_API_KEY` for embeddings. — detection/answering/contradiction need an LLM; Anthropic ships no embeddings.
+- Retrieval: in-memory cosine over OpenAI embeddings, seeded from committed fixtures, behind a swappable `KnowledgeStore` interface. — simplest real RAG at demo scale; SQLite won't persist on Vercel; Supabase/pgvector is the drop-in if shared persistent uploads are needed.

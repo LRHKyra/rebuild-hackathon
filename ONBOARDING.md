@@ -25,7 +25,8 @@ Env vars (all server-side, never sent to the client):
 | --------------------- | -------------------------------------------------- |
 | `ELEVENLABS_API_KEY`  | Scribe STT tokens + TTS                            |
 | `ELEVENLABS_VOICE_ID` | The voice Vesper speaks with                       |
-| `LLM_API_KEY`         | Question detection, answering, contradiction       |
+| `ANTHROPIC_API_KEY`   | Claude — detection (Haiku), answering (Sonnet), contradiction |
+| `OPENAI_API_KEY`      | Embeddings (text-embedding-3-small) for retrieval   |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` locally                    |
 
 **Read these before coding (in order):** `spec/principles.md`, `spec/product.md`,
@@ -89,8 +90,12 @@ single confidence source (the answer prompt's confidence, informed by retrieval
 score); detectContradiction must see the full knowledge base at demo scale;
 unsupported questions must refuse per §10A; real embeddings retrieval, do NOT
 stuff the whole KB into the prompt. Expose functions + routes only — no UI, no
-transcript orchestration. Validate any ElevenLabs/LLM SDK usage against current
-docs, not memory. Keys are server-side, validated at request time.
+transcript orchestration. Stack: Claude via @anthropic-ai/sdk (Haiku 4.5
+"claude-haiku-4-5" for detection/contradiction, Sonnet 4.6 "claude-sonnet-4-6"
+for answering, forced single-tool JSON + prompt caching) and OpenAI
+"text-embedding-3-small" via the openai SDK for embeddings; in-memory vector store
+behind a KnowledgeStore interface. Keys ANTHROPIC_API_KEY + OPENAI_API_KEY are
+server-side, validated at request time.
 
 Do this in order: (1) land the §8 data-model types in src/types.ts; (2) stub
 /api/knowledge and /api/answer to return mock data in the §13 contract shape so

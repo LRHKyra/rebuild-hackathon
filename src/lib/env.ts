@@ -29,8 +29,13 @@ export function getElevenLabsVoiceId(): string {
   return requireEnv("ELEVENLABS_VOICE_ID");
 }
 
-// LLM provider key — question detection, grounded answering, contradiction.
-// Server-only. (Used by the product routes, not the bare voice loop.)
-export function getLlmApiKey(): string {
-  return requireEnv("LLM_API_KEY");
+// Anthropic (Claude) key — question detection (Haiku), grounded answering
+// (Sonnet), contradiction detection. Server-only.
+export function getAnthropicApiKey(): string {
+  return requireEnv("ANTHROPIC_API_KEY");
+}
+
+// OpenAI key — text-embedding-3-small for knowledge retrieval. Server-only.
+export function getOpenAiApiKey(): string {
+  return requireEnv("OPENAI_API_KEY");
 }

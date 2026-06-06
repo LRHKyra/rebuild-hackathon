@@ -54,7 +54,8 @@ npm run dev                  # http://localhost:3000
 | ---------------------- | --------------------- | ----------------------------------------------- |
 | `ELEVENLABS_API_KEY`   | **server only**       | Scribe STT tokens + TTS. Never sent to client.  |
 | `ELEVENLABS_VOICE_ID`  | **server only**       | The voice Vesper speaks with (TTS).             |
-| `LLM_API_KEY`          | **server only**       | Question detection, answering, contradiction.   |
+| `ANTHROPIC_API_KEY`    | **server only**       | Claude — detection (Haiku), answering (Sonnet), contradiction. |
+| `OPENAI_API_KEY`       | **server only**       | Embeddings (text-embedding-3-small) for retrieval. |
 | `NEXT_PUBLIC_APP_URL`  | client + server       | App base URL (`http://localhost:3000` local).   |
 
 Secrets are read **at request time** inside the route, so `npm run build` and CI
@@ -70,7 +71,7 @@ Vesper does NOT use Conversational AI (its answers must pass our grounding pipel
 
 1. Copy an ElevenLabs **API key** and pick a **voice id** for TTS.
 2. Put them in `.env.local` (`ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`), plus
-   your `LLM_API_KEY`.
+   `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`.
 3. `npm run dev`, open the app, click **Start**, allow the mic, and **speak** →
    your words appear in the transcript (STT). Trigger a spoken reply → you hear
    Vesper via TTS.

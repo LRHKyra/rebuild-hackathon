@@ -1,8 +1,9 @@
-// Traces to: spec/features/voice-loop.md + spec/product.md (shared types).
-// Shared, idea-agnostic types for the voice loop.
+// Traces to: spec/product.md §8 (knowledge model) + §13 (contracts) and
+// spec/features/voice-loop.md. Shared types — the seams between lanes. Lane A owns
+// this file; other lanes import from it. Announce changes (workstreams.md).
 
-// Mirrors the @elevenlabs/react Scribe status, plus our own "error" state used to
-// drive the no-voice fallback.
+// ── Voice loop (idea-agnostic) ──────────────────────────────────────────────
+
 export type VoiceStatus =
   | "disconnected"
   | "connecting"
@@ -10,22 +11,92 @@ export type VoiceStatus =
   | "transcribing"
   | "error";
 
-// One line of transcript rendered in the UI. `isFinal` distinguishes a committed
-// segment from the in-progress (partial) one.
 export type TranscriptLine = {
   id: string;
   text: string;
   isFinal: boolean;
 };
 
-// Shape returned by /api/scribe/token on success.
 export type ScribeTokenResponse = {
   token: string;
 };
 
-// TODO(spec): product.md §Core Flow — the demo's "result" payload.
-// Placeholder shape until the product surfaces are built. Replace fields to match
-// what the live call workspace needs to show (answer cards, etc.).
+// ── Knowledge & call model (product.md §8) ──────────────────────────────────
+
+export type QuestionCategory =
+  | "security"
+  | "integration"
+  | "implementation"
+  | "pricing"
+  | "product"
+  | "compliance"
+  | "other";
+
+export type Urgency = "low" | "medium" | "high";
+export type Confidence = "high" | "medium" | "low";
+export type Severity = "low" | "medium" | "high";
+export type Speaker = "prospect" | "rep" | "unknown";
+
+export type KnowledgeCard = {
+  id: string;
+  companyId: string;
+  title: string;
+  source: string;
+  topicTags: string[];
+  text: string;
+  embedding?: number[];
+  createdAt: string;
+};
+
+export type DetectedQuestion = {
+  id: string;
+  callId: string;
+  question: string;
+  speaker: Speaker;
+  transcriptWindow: string;
+  status: "new" | "answered" | "ignored";
+  category?: QuestionCategory;
+  createdAt: string;
+};
+
+export type AnswerCard = {
+  id: string;
+  callId: string;
+  questionId: string;
+  answer: string;
+  sourceCardIds: string[];
+  confidence: Confidence;
+  canSpeak: boolean;
+  createdAt: string;
+};
+
+export type CorrectionCard = {
+  id: string;
+  callId: string;
+  repStatement: string;
+  issue: string;
+  suggestedCorrection: string;
+  sourceCardIds: string[];
+  severity: Severity;
+  createdAt: string;
+};
+
+// A knowledge card with its similarity score from retrieval.
+export type RetrievedCard = {
+  card: KnowledgeCard;
+  score: number;
+};
+
+// Response shape of POST /api/call/transcript — the big seam (Lane B → Lane C).
+export type TranscriptAnalysis = {
+  detectedQuestion?: DetectedQuestion | null;
+  answerCard?: AnswerCard | null;
+  correctionCard?: CorrectionCard | null;
+};
+
+// ── Product placeholder (Lane C) ────────────────────────────────────────────
+// TODO(spec): product.md §6B — superseded by AnswerCard/CorrectionCard in the
+// real workspace; kept until the panel UI lands.
 export type DemoResult = {
   title: string;
   summary: string;

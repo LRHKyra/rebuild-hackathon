@@ -20,5 +20,6 @@ jobs:
         env:
           ELEVENLABS_API_KEY: dummy
           ELEVENLABS_VOICE_ID: dummy
-          LLM_API_KEY: dummy
+          ANTHROPIC_API_KEY: dummy
+          OPENAI_API_KEY: dummy
           NEXT_PUBLIC_APP_URL: http://localhost:3000

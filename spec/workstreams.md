@@ -49,7 +49,8 @@ Covers WS2 (ingestion) + WS3 (retrieval + answering) + the LLM eval functions.
 - `detectContradiction()` sees the full KB at demo scale (not a narrow subset)
 
 **Boundaries:** no UI, no transcript orchestration. Expose functions + routes only.
-**Env:** `LLM_API_KEY` (server-side, request-time validation per principles.md).
+**Env:** `ANTHROPIC_API_KEY` (Claude) + `OPENAI_API_KEY` (embeddings), server-side,
+request-time validation per principles.md.
 
 ---
 
@@ -100,7 +101,8 @@ Covers WS1 (frontend shell) + the call workspace + WS7 (demo data & script).
 1. **Hour 0:** Lane A lands `src/types.ts` data model. All three routes return
    mock-shaped data. → everyone unblocked immediately.
 2. **Critical path (do early):** verify the live voice loop with **real credentials**
-   (`.env.local`: `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `LLM_API_KEY`) — this
+   (`.env.local`: `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ANTHROPIC_API_KEY`,
+   `OPENAI_API_KEY`) — this
    is the core risk and is already one manual step away.
 3. **First integration:** Lane B's `/api/call/transcript` real response replaces the
    mock Lane C renders against. Then Lane A's real retrieval replaces Lane B's stubs.
