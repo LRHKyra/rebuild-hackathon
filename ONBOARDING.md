@@ -59,9 +59,18 @@ Full detail in [`spec/workstreams.md`](spec/workstreams.md). Assign owners:
 | **B — Call pipeline & voice** ("ears & mouth") | ______ | `/api/call/transcript`, `/api/summon`, wake-word; extends the built voice core |
 | **C — Workspace UI & demo** ("face") | ______ | call workspace, private panel cards, knowledge page, AcmeFlow data, demo script |
 
-**Already built (don't rebuild):** the voice core — `GET /api/scribe/token`,
-`POST /api/tts`, and `VoiceAgent` (live Scribe STT transcript + TTS playback +
-half-duplex gating). Lane B extends it.
+**Already built (don't rebuild):**
+- **Voice core** — `GET /api/scribe/token`, `POST /api/tts`, and `VoiceAgent` (live
+  Scribe STT transcript + TTS playback + half-duplex gating). Lane B extends it.
+- **Lane A is shipped** (code = source of truth): real `/api/knowledge` (paste +
+  .txt/.md/.pdf upload), `/api/answer`, the LLM lib (`src/lib/llm/*`, Claude
+  Haiku/Sonnet), `src/lib/embeddings.ts` (OpenAI), `retrieval.ts`, `chunk.ts`,
+  `pdf.ts`, the in-memory `store.ts`, and `scripts/{check-keys,call-sim}.mjs`.
+- **Lane A also pre-landed Lane B's `/api/call/transcript` + `src/lib/wakeword.ts`**
+  as working reference impls (not stubs) so the loop is provable via `npm run call-sim`.
+  Lane B extends these; `/api/summon` (audio route) is still unbuilt. See product.md
+  §13 / §10C and workstreams.md for the two contract deltas (`isWake`/`summon`;
+  retrieval-scoped contradiction).
 
 ---
 
@@ -69,7 +78,7 @@ half-duplex gating). Lane B extends it.
 
 Each teammate runs Claude Code in the repo and pastes **their** lane's prompt.
 
-### Lane A — Knowledge & AI core
+### Lane A — Knowledge & AI core  _(✅ shipped — prompt kept for the record; see "Already built" above)_
 
 ```text
 You're in the Vesper hackathon repo; we use spec-driven development. Read these
@@ -87,7 +96,8 @@ types in src/types.ts. Do not touch other lanes' files.
 Honor the data model in product.md §8 and the API contracts in §13 EXACTLY —
 Lanes B and C code against them. Use the prompts in product.md §12. Rules: a
 single confidence source (the answer prompt's confidence, informed by retrieval
-score); detectContradiction must see the full knowledge base at demo scale;
+score); detectContradiction checks against the retrieved cards passed to it (the
+transcript route uses top-8 — NOT the full KB; see product.md §10C);
 unsupported questions must refuse per §10A; real embeddings retrieval, do NOT
 stuff the whole KB into the prompt. Expose functions + routes only — no UI, no
 transcript orchestration. Stack: Claude via @anthropic-ai/sdk (Haiku 4.5
@@ -104,7 +114,7 @@ the other lanes are unblocked; (3) implement ingestion + embeddings; (4) retriev
 commit small, referencing the spec section.
 ```
 
-### Lane B — Call pipeline & voice
+### Lane B — Call pipeline & voice  _(updated: Lane A pre-landed your transcript route + wakeword as reference impls)_
 
 ```text
 You're in the Vesper hackathon repo; we use spec-driven development. Read these
@@ -120,21 +130,25 @@ src/app/api/call/transcript/route.ts, src/app/api/summon/route.ts,
 src/lib/wakeword.ts, the voice-core files above, and a typed-transcript fallback
 input. Do not touch other lanes' files.
 
-Honor the API contracts in product.md §13 EXACTLY. /api/call/transcript
-orchestrates per §13: detect -> (only if a question) retrieve + answer -> run
-contradiction on statements that assert a product fact, by CALLING Lane A's lib
-functions (stub them returning mock §8 shapes until Lane A lands them). Wake-word
-gating is by name from ANYONE on the call (no speaker diarization — product.md
-§6C). On summon, Vesper speaks an AD-HOC grounded answer (regenerate if the
-conversation moved on since detection — never canned audio) and the route streams
-audio/mpeg. Keep half-duplex gating (mute STT while TTS plays). Keys are
-server-side, validated at request time.
+Honor the API contracts in product.md §13 EXACTLY. IMPORTANT: Lane A already shipped
+real lib functions AND working reference impls of /api/call/transcript +
+src/lib/wakeword.ts (NOT stubs — no stubbing needed). Read them first and EXTEND,
+don't rebuild; coordinate with Lane A before editing. The transcript route response
+now includes isWake + summon (the latest speakable AnswerCard); contradiction is
+checked against the top-8 retrieved cards (product.md §10C). It does NOT yet wire a
+rolling 60–90s transcript window (passes only the latest line) — that's yours to add.
+Wake-word gating is by name from ANYONE on the call (no diarization — §6C). On summon,
+Vesper speaks an AD-HOC grounded answer (regenerate if the conversation moved on since
+detection — never canned audio). Keep half-duplex gating (mute STT while TTS plays).
+Keys are server-side, validated at request time.
 
-Do this in order: (1) stub /api/call/transcript + /api/summon to return mock data
-in the §13 shape so Lane C is unblocked; (2) wake-word matcher; (3) wire the live
-Scribe transcript + a typed fallback into /api/call/transcript; (4) summon ->
-ad-hoc answer (via Lane A) -> TTS stream; (5) contradiction triggering. Run npm
-run lint and npm run build before each commit; commit small, referencing the spec.
+Do this in order: (1) confirm the existing /api/call/transcript reference impl via
+`npm run call-sim`; (2) wire the live Scribe transcript + a typed fallback into it and
+add the rolling window; (3) build /api/summon (the still-missing route): take the
+transcript route's `summon` AnswerCard, regenerate ad hoc if context moved on, and
+stream audio/mpeg via the built POST /api/tts; (4) tighten wake-word + contradiction
+triggering. Run npm run lint and npm run build before each commit; commit small,
+referencing the spec.
 ```
 
 ### Lane C — Workspace UI & demo
